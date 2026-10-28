@@ -1,0 +1,68 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Chrome and ink from the reference palette; dark values are their own steps, not an inversion. */
+:root {
+  color-scheme: light;
+  --page: #f9f9f7;
+  --surface: #fcfcfb;
+  --ink: #0b0b0b;
+  --ink-2: #52514e;
+  --muted: #898781;
+  --hairline: #e1e0d9;
+  --baseline: #c3c2b7;
+  --accent: #2a78d6;
+  --good-text: #006300;
+  --bad-text: #d03b3b;
+  --ring: rgba(11, 11, 11, 0.1);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --page: #0d0d0d;
+    --surface: #1a1a19;
+    --ink: #ffffff;
+    --ink-2: #c3c2b7;
+    --hairline: #2c2c2a;
+    --baseline: #383835;
+    --accent: #3987e5;
+    --good-text: #0ca30c;
+    --bad-text: #e66767;
+    --ring: rgba(255, 255, 255, 0.1);
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --page: #0d0d0d;
+  --surface: #1a1a19;
+  --ink: #ffffff;
+  --ink-2: #c3c2b7;
+  --hairline: #2c2c2a;
+  --baseline: #383835;
+  --accent: #3987e5;
+  --good-text: #0ca30c;
+  --bad-text: #e66767;
+  --ring: rgba(255, 255, 255, 0.1);
+}
+
+body {
+  background: var(--page);
+  color: var(--ink);
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+.tnum { font-variant-numeric: tabular-nums; }
+
+/* iPhone notch and home indicator (with viewport-fit=cover) */
+.safe-top { padding-top: max(env(safe-area-inset-top), 0.5rem); }
+.safe-bottom { padding-bottom: max(env(safe-area-inset-bottom), 1rem); }
+.safe-x { padding-left: max(env(safe-area-inset-left), 1rem); padding-right: max(env(safe-area-inset-right), 1rem); }
+@media (min-width: 768px) {
+  .safe-x { padding-left: max(env(safe-area-inset-left), 1.5rem); padding-right: max(env(safe-area-inset-right), 1.5rem); }
+  main.safe-bottom { padding-bottom: max(env(safe-area-inset-bottom), 1.5rem); }
+}
+/* iOS Safari zooms into any field with text under 16px */
+@media (max-width: 767px) {
+  input, select, textarea { font-size: 16px !important; }
+}
+html { -webkit-text-size-adjust: 100%; }
