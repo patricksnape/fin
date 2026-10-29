@@ -1,5 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import CategoryPicker from "../components/CategoryPicker";
 import { Card, CardHeader, Loading } from "../components/ui";
 import { useApi } from "../lib/api";
@@ -8,11 +8,13 @@ import { dateLabel, int, money } from "../lib/format";
 interface Merchant {
   payee_key: string; payee: string; count: number; category: string; needs_category: boolean;
   source: "model" | "mapping" | "rule" | "unknown"; merchant_types: string[]; total: string; currency: string;
+  payments: Array<[string, string]>; // [date, amount]
 }
 interface Queue { merchants: Merchant[]; transactions: number }
 interface Options { categories: string[] }
 
 const SOURCE: Record<string, string> = { model: "Model guess", mapping: "From merchant type", rule: "From a rule", unknown: "Not categorized" };
+const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 const field = "rounded-md border border-hairline bg-surface px-2 py-1 text-sm text-ink";
 
 async function confirm(m: Merchant, category: string, remember: boolean, perType: boolean): Promise<string | null> {
@@ -130,7 +132,10 @@ function Row({ m, categories, onDone, onCategoryAdded }: { m: Merchant; categori
         <div className="truncate font-medium text-ink" title={m.payee}><span aria-hidden className="mr-1 text-muted">{open ? "▾" : "▸"}</span>{m.payee}</div>
         <div className="truncate pl-4 text-xs text-muted" title={m.merchant_types.join(", ")}>{m.merchant_types[0] ?? "no merchant type"}{m.merchant_types.length > 1 ? ` +${m.merchant_types.length - 1}` : ""}</div>
       </button>
-      <div className="w-20 shrink-0 text-ink-2">{int(m.count)} × <span className="text-muted">{money(m.total, m.currency, 0)}</span></div>
+      <div className="w-28 shrink-0 text-ink-2">
+        {int(m.count)} × <span className="text-muted">{money(m.total, m.currency, 0)}</span>
+        {m.payments.length > 0 && <div className="text-xs text-muted">{m.payments.length > 1 && m.payments[0][0] !== m.payments[m.payments.length - 1][0] ? `${dateLabel(m.payments[0][0])} – ${dateLabel(m.payments[m.payments.length - 1][0])}` : dateLabel(m.payments[0][0])}</div>}
+      </div>
       <span className={`w-28 shrink-0 text-xs ${m.source === "model" ? "font-medium text-ink" : "text-muted"}`}>{SOURCE[m.source]}</span>
       <CategoryPicker label={`Category for ${m.payee}`} value={category} categories={categories} onChange={(c) => { setAdding(false); setCategory(c); }} onNew={() => setAdding(true)} className="w-52 shrink-0" />
       <label className="flex items-center gap-1 text-xs text-ink-2" title="Label the future payments from this merchant the same way">
@@ -163,9 +168,29 @@ export default function Review() {
   const { data } = useApi<Queue>("/api/review");
   const options = useApi<Options>("/api/labels/options").data;
   const [bulk, setBulk] = useState<string | null>(null);
+  const [year, setYear] = useState("");
+  const [month, setMonth] = useState("");
+  const [sort, setSort] = useState<"default" | "date" | "amount">("default");
+  const [desc, setDesc] = useState(true);
+  const years = useMemo(() => [...new Set((data?.merchants ?? []).flatMap((m) => m.payments.map(([d]) => d.slice(0, 4))))].sort().reverse(), [data]);
+  // with a period picked, each merchant shows only its payments in it (count, total and dates follow)
+  const rows = useMemo(() => {
+    if (!data) return [];
+    const inPeriod = (d: string) => (!year || d.startsWith(year)) && (!month || d.slice(5, 7) === month);
+    const shown = data.merchants
+      .map((m) => {
+        const ps = m.payments.filter(([d]) => inPeriod(d));
+        return { m: { ...m, payments: ps, count: ps.length, total: String(ps.reduce((t, [, a]) => t + Number(a), 0)) }, ps, all: m.count };
+      })
+      .filter((r) => r.ps.length > 0);
+    if (sort === "default") return shown;
+    const key = (r: (typeof shown)[number]) => (sort === "date" ? r.ps[r.ps.length - 1][0] : Math.abs(Number(r.m.total)));
+    return [...shown].sort((a, b) => (key(a) < key(b) ? -1 : key(a) > key(b) ? 1 : 0) * (desc ? -1 : 1));
+  }, [data, year, month, sort, desc]);
   if (!data || !options) return <Loading />;
   const refresh = () => qc.invalidateQueries();
   const guesses = data.merchants.filter((m) => !m.needs_category);
+  const filtered = year !== "" || month !== "";
 
   const confirmAll = async () => {
     for (const [i, m] of guesses.entries()) {
@@ -189,9 +214,41 @@ export default function Review() {
         )}
       />
       {data.merchants.length > 0 && (
-        <ul className="divide-y divide-hairline">
-          {data.merchants.map((m) => <Row key={m.payee_key} m={m} categories={options.categories} onDone={refresh} onCategoryAdded={refresh} />)}
-        </ul>
+        <>
+          <div className="mb-3 flex flex-wrap items-end gap-3 text-xs text-ink-2">
+            <label className="flex flex-col gap-1">Year
+              <select value={year} onChange={(e) => setYear(e.target.value)} className={field}>
+                <option value="">All</option>
+                {years.map((y) => <option key={y}>{y}</option>)}
+              </select>
+            </label>
+            <label className="flex flex-col gap-1">Month
+              <select value={month} onChange={(e) => setMonth(e.target.value)} className={field}>
+                <option value="">All</option>
+                {MONTHS.map((name, i) => <option key={name} value={String(i + 1).padStart(2, "0")}>{name}</option>)}
+              </select>
+            </label>
+            <label className="flex flex-col gap-1">Sort by
+              <select value={sort} onChange={(e) => setSort(e.target.value as typeof sort)} className={field}>
+                <option value="default">To decide first, then biggest</option>
+                <option value="date">Date of latest payment</option>
+                <option value="amount">Amount</option>
+              </select>
+            </label>
+            {sort !== "default" && (
+              <button onClick={() => setDesc((v) => !v)} className="rounded-md border border-hairline px-3 py-1 text-sm text-ink-2 hover:bg-hairline" aria-label="Reverse the order">
+                {sort === "date" ? (desc ? "Newest first ↓" : "Oldest first ↑") : desc ? "Largest first ↓" : "Smallest first ↑"}
+              </button>
+            )}
+            {filtered && <button onClick={() => { setYear(""); setMonth(""); }} className="text-sm text-accent underline-offset-2 hover:underline">Clear filter</button>}
+          </div>
+          {filtered && <p className="mb-2 text-xs text-muted">{int(rows.length)} merchants with payments in this period. Counts and totals are for the period; Confirm still labels all of a merchant’s pending payments.</p>}
+          {rows.length === 0 ? <p className="text-sm text-ink-2">Nothing to review in this period.</p> : (
+            <ul className="divide-y divide-hairline">
+              {rows.map(({ m }) => <Row key={m.payee_key} m={m} categories={options.categories} onDone={refresh} onCategoryAdded={refresh} />)}
+            </ul>
+          )}
+        </>
       )}
     </Card>
   );

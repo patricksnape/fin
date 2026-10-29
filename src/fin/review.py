@@ -41,6 +41,7 @@ def queue(led) -> list[dict]:
                 "payee_key": key,
                 "payee": e.payee,
                 "refs": [],
+                "payments": [],
                 "categories": Counter(),
                 "sources": Counter(),
                 "merchant_types": Counter(),
@@ -49,6 +50,7 @@ def queue(led) -> list[dict]:
             },
         )
         g["refs"].append(e.meta["ref"])
+        g["payments"].append([e.date.isoformat(), str(spent.units.number)])
         g["categories"][spent.account] += 1
         g["sources"][e.meta.get("categorized") or "unknown"] += 1
         if mt := e.meta.get("merchant_category"):
@@ -63,6 +65,7 @@ def queue(led) -> list[dict]:
                 "payee": g["payee"],
                 "count": len(g["refs"]),
                 "refs": g["refs"],
+                "payments": sorted(g["payments"]),  # [date, amount], so a page can total any period
                 "category": cat,
                 "needs_category": cat in (labels.UNCATEGORIZED, labels.INCOME_UNCATEGORIZED),
                 "source": g["sources"].most_common(1)[0][0],
