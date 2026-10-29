@@ -1,6 +1,6 @@
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
-import { Fire as FireData, saveFire } from "../lib/api";
+import { Fire as FireData, errorText, saveFire } from "../lib/api";
 import { dateLabel, money, n, pct } from "../lib/format";
 import { curveChart, projectionChart } from "../lib/charts";
 import { useMode } from "../lib/theme";
@@ -23,7 +23,7 @@ function toParams(i: Inputs): Record<string, string> {
   const pctOf = (v: string) => String(Number(v.replace(",", ".")) / 100);
   if (i.withdrawal.trim()) out.withdrawal_rate = pctOf(i.withdrawal);
   if (i.ret.trim()) out.real_return = pctOf(i.ret);
-  if (i.spend.trim()) out.target_spend = i.spend.trim();
+  if (i.spend.trim()) out.target_spend = i.spend.replace(/[\s,'’]/g, ""); // 200,000 or 200'000 is 200000
   if (i.birth.trim()) out.birth_year = i.birth.trim();
   if (i.access.trim()) out.pension_access_age = i.access.trim();
   if (i.target.trim()) out.target_age = i.target.trim();
@@ -32,7 +32,7 @@ function toParams(i: Inputs): Record<string, string> {
 
 async function getFire(qs: string): Promise<FireData> {
   const res = await fetch(`/api/fire?${qs}`);
-  if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail ?? `${res.status}`);
+  if (!res.ok) throw new Error(await errorText(res));
   return res.json();
 }
 

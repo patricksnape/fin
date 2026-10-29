@@ -1,8 +1,17 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
+// the server's error text: a plain message, or a list of field problems (a 422)
+export async function errorText(res: Response): Promise<string> {
+  const body = await res.json().catch(() => ({}));
+  const d = body.detail;
+  if (typeof d === "string") return d;
+  if (Array.isArray(d)) return d.map((e) => `${(e.loc ?? []).slice(1).join(".") || "input"}: ${e.msg ?? JSON.stringify(e)}`).join("; ");
+  return `${res.status} ${res.statusText}`;
+}
+
 export async function getJson<T>(path: string): Promise<T> {
   const res = await fetch(path);
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+  if (!res.ok) throw new Error(await errorText(res));
   return res.json();
 }
 
@@ -59,8 +68,7 @@ export async function* streamChat(message: string, conversationId: string): Asyn
     body: JSON.stringify({ message, conversation_id: conversationId }),
   });
   if (!res.ok || !res.body) {
-    const detail = await res.json().catch(() => ({}));
-    yield { type: "error", message: detail.detail ?? `${res.status} ${res.statusText}` };
+    yield { type: "error", message: await errorText(res) };
     return;
   }
   const reader = res.body.getReader();
@@ -90,7 +98,7 @@ export function useSaveSettings() {
   return useMutation({
     mutationFn: async (agent: { model: string; effort: string }) => {
       const res = await fetch("/api/settings", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(agent) });
-      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail ?? `${res.status}`);
+      if (!res.ok) throw new Error(await errorText(res));
       return (await res.json()) as SettingsData;
     },
     onSuccess: (data) => qc.setQueryData(["/api/settings"], data),
@@ -147,7 +155,7 @@ export interface Fire { status: FireStatus; saved: FireAssumptions; differs_from
 
 export async function saveFire(body: Record<string, string | number | null>): Promise<Fire> {
   const res = await fetch("/api/fire/settings", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-  if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail ?? `${res.status}`);
+  if (!res.ok) throw new Error(await errorText(res));
   return res.json();
 }
 
