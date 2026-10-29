@@ -88,9 +88,9 @@ export default function Spending({ ccy }: { ccy: string }) {
       <div className="flex flex-wrap items-center gap-3">
         <Segmented label="View" value={view} onChange={setView} options={[{ value: "run_rate", label: "Run-rate" }, { value: "cash", label: "Cash" }]} />
         <Segmented label="Range" value={(year ? "" : range) as "6" | "12" | "24"} onChange={setRange} options={[{ value: "6", label: "6 months" }, { value: "12", label: "12 months" }, { value: "24", label: "24 months" }]} />
-        <select aria-label="Calendar year" value={year ?? ""} onChange={(e) => e.target.value && setRange(e.target.value)} className={`rounded-lg border border-hairline bg-surface px-2 py-1.5 text-xs ${year ? "bg-ink text-surface" : "text-ink-2"}`}>
-          <option value="" disabled>Year…</option>
-          {years.map((y) => <option key={y} value={y}>{y}</option>)}
+        <select aria-label="Calendar year" value={year ?? ""} onChange={(e) => e.target.value && setRange(e.target.value)} className={`rounded-lg border bg-surface px-2 py-1.5 text-xs ${year ? "border-ink font-medium text-ink" : "border-hairline text-ink-2"}`}>
+          <option value="" disabled className="bg-surface text-ink">Year…</option>
+          {years.map((y) => <option key={y} value={y} className="bg-surface text-ink">{y}</option>)}
         </select>
         <p className="text-xs text-muted">{note}</p>
       </div>
