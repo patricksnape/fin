@@ -278,8 +278,10 @@ def create_app(root: Path | None = None, backend=None) -> FastAPI:
         necessity: str = "",
         card: str = "",
         limit: int = 1000,
+        start: str = "",
+        end: str = "",
     ):
-        """Every transaction of a month (or all), with filters. `summary` covers the whole month so
+        """Every transaction of a month (or all, or the months start..end), with filters. `summary` covers the whole month so
         the numbers do not move as you filter; `matching` is what the filters left."""
         d = ctx.data()
         t = d.transactions.assign(ym=[f"{x.year}-{x.month:02d}" for x in d.transactions["date"]])
@@ -298,7 +300,16 @@ def create_app(root: Path | None = None, backend=None) -> FastAPI:
             raise HTTPException(400, "unknown kind")
         if flag not in ("", "recurring", "major"):
             raise HTTPException(400, "flag must be recurring or major")
+        for bound in (start, end):
+            if bound and not re.fullmatch(r"\d{4}-(0[1-9]|1[0-2])", bound):
+                raise HTTPException(400, "start and end must be YYYY-MM")
+        if start or end:  # a run of months, e.g. what a chart on another page was showing
+            month = "all"
         scope = t if month == "all" else t[t["ym"] == month]
+        if start:
+            scope = scope[scope["ym"] >= start]
+        if end:
+            scope = scope[scope["ym"] <= end]
         summary = {
             "count": len(scope),
             "income": scope.loc[scope["kind"] == "income", "amount"].sum(),

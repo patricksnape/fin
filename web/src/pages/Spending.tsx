@@ -54,7 +54,9 @@ export default function Spending({ ccy }: { ccy: string }) {
   if (!data || !cadence || !necessity || !category || !accounts) return <Loading what="Computing spending" />;
 
   // a click on a bar or a month opens that slice of spending as transactions
-  const open = (filter: Record<string, string>) => go("transactions", { kind: "expense", ...filter });
+  // a link from a chart or table that covers the range on show opens those same months, not just the latest
+  const shown: Record<string, string> = accounts.rows.length ? { start: accounts.rows[0].month, end: accounts.rows[accounts.rows.length - 1].month } : {};
+  const open = (filter: Record<string, string>) => go("transactions", { kind: "expense", ...(filter.month ? {} : shown), ...filter });
   const pickFrom = (p: { keys: string[]; rows: Array<Record<string, string>> }, field: "category" | "cadence" | "necessity") => (e: { seriesIndex: number; dataIndex: number }) => {
     const key = p.keys[e.seriesIndex];
     open({ month: p.rows[e.dataIndex].month, ...(key && key !== "Other" ? { [field]: key } : {}) });
@@ -81,7 +83,7 @@ export default function Spending({ ccy }: { ccy: string }) {
   ];
   const note = view === "run_rate" ? "Yearly and quarterly bills are spread over the months they cover. Major purchases, taxes and payroll deductions are excluded." : "Payments in the month they were made. Major purchases, taxes and payroll deductions are excluded.";
   const recurringCols: Column<Series>[] = [
-    { key: "payee", label: "Payee" },
+    { key: "payee", label: "Payee", render: (s) => <button onClick={() => open({ q: s.payee })} className="text-left text-accent underline-offset-2 hover:underline">{s.payee}</button> },
     { key: "period", label: "Period" },
     { key: "typical_amount", label: "Typical", align: "right", render: (s) => money(s.typical_amount, ccy) },
     { key: "last_date", label: "Last paid", render: (s) => dateLabel(s.last_date) },
@@ -167,7 +169,7 @@ export default function Spending({ ccy }: { ccy: string }) {
         <DataTable
           columns={[
             { key: "date", label: "Date", render: (r) => dateLabel(r.date) },
-            { key: "payee", label: "Payee" },
+            { key: "payee", label: "Payee", render: (r) => <button onClick={() => open({ month: r.date.slice(0, 7), q: r.payee })} className="text-left text-accent underline-offset-2 hover:underline">{r.payee}</button> },
             { key: "narration", label: "What" },
             { key: "amount", label: ccy, align: "right", render: (r) => money(r.amount, ccy, 0) },
           ]}

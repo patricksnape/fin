@@ -82,14 +82,14 @@ function Detail({ t, ccy }: { t: Txn; ccy: string }) {
 }
 
 /** Links carry a selection: #transactions?month=2026-03&category=Expenses:Food&kind=expense */
-export interface Initial { tag?: string; account?: string; month?: string; category?: string; kind?: string; cadence?: string; necessity?: string }
+export interface Initial { q?: string; start?: string; end?: string; tag?: string; account?: string; month?: string; category?: string; kind?: string; cadence?: string; necessity?: string }
 
 const KINDS = ["expense", "income", "transfer", "investment", "asset"];
 const NAMES: Record<string, string> = { one_off: "one-off" };
 
 export default function Transactions({ ccy, initial = {} }: { ccy: string; initial?: Initial }) {
   const initialAccount = initial.account ?? "";
-  const [month, setMonth] = useState(initial.month ?? (initialAccount ? "all" : "latest")); // from an account link: its whole history
+  const [month, setMonth] = useState(initial.month ?? (initialAccount || initial.start || initial.end ? "all" : "latest")); // from an account link: its whole history
   const [kind, setKind] = useState<KindFilter>(KINDS.includes(initial.kind ?? "") ? (initial.kind as KindFilter) : "all");
   const qc = useQueryClient();
   const [tag, setTag] = useState(initial.tag ?? "");
@@ -103,8 +103,10 @@ export default function Transactions({ ccy, initial = {} }: { ccy: string; initi
   const [review, setReview] = useState(false);
   const [card, setCard] = useState("");
   const [flag, setFlag] = useState<"" | "recurring" | "major">("");
-  const [text, setText] = useState("");
-  const [q, setQ] = useState("");
+  const [text, setText] = useState(initial.q ?? "");
+  const [q, setQ] = useState(initial.q ?? "");
+  const [start, setStart] = useState(initial.start ?? ""); // a run of months from a chart on another page
+  const [end, setEnd] = useState(initial.end ?? "");
   const [open, setOpen] = useState<string | null>(null);
   const [account, setAccount] = useState(initialAccount);
   const [before, setBefore] = useState("latest"); // the month to return to when the review queue is closed
@@ -114,6 +116,8 @@ export default function Transactions({ ccy, initial = {} }: { ccy: string; initi
   }, [text]);
 
   const params = new URLSearchParams({ month, kind, q, flag });
+  if (start) params.set("start", start);
+  if (end) params.set("end", end);
   if (account) params.set("account", account);
   if (cats.length) params.set("category", cats.join(","));
   if (tag) params.set("tag", tag);
@@ -178,7 +182,7 @@ export default function Transactions({ ccy, initial = {} }: { ccy: string; initi
       <div className="flex flex-wrap items-center gap-2">
         <div className="inline-flex items-center rounded-lg border border-hairline bg-surface text-sm">
           <button aria-label="Previous month" disabled={data.month === "all" || idx >= months.length - 1} onClick={() => go(1)} className="px-3 py-1.5 text-ink-2 hover:bg-hairline disabled:opacity-30">◀</button>
-          <select aria-label="Month" value={data.month} onChange={(e) => setMonth(e.target.value)} className="bg-surface px-2 py-1.5 text-ink outline-none">
+          <select aria-label="Month" value={data.month} onChange={(e) => { setMonth(e.target.value); setStart(""); setEnd(""); }} className="bg-surface px-2 py-1.5 text-ink outline-none">
             <option value="all">All months</option>
             {months.map((m) => (
               <option key={m.month} value={m.month}>{monthName(m.month)} · {m.count}{m.needs_review ? ` · ⚑${m.needs_review}` : ""}</option>
@@ -186,6 +190,11 @@ export default function Transactions({ ccy, initial = {} }: { ccy: string; initi
           </select>
           <button aria-label="Next month" disabled={data.month === "all" || idx <= 0} onClick={() => go(-1)} className="px-3 py-1.5 text-ink-2 hover:bg-hairline disabled:opacity-30">▶</button>
         </div>
+        {(start || end) && (
+          <button onClick={() => { setStart(""); setEnd(""); }} className="rounded-full border border-hairline bg-surface px-3 py-1 text-xs text-ink-2 hover:bg-hairline" title="Show every month again">
+            {start && end ? `${start} to ${end}` : start ? `from ${start}` : `to ${end}`} ✕
+          </button>
+        )}
         <Segmented<KindFilter>
           label="Kind"
           value={kind}

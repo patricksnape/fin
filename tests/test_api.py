@@ -314,3 +314,15 @@ def test_review_details_meta_is_plain_text(tmp_path):
             for row in c.get("/api/review/details", params={"payee_key": m["payee_key"]}).json():
                 assert all(isinstance(v, str) for v in row["meta"].values())
                 assert not any(k.startswith("__") for k in row["meta"])
+
+
+def test_transactions_can_be_limited_to_a_run_of_months(tmp_path):
+    root = tmp_path / "repo"
+    demo.create_demo(root)
+    with TestClient(create_app(root)) as c:
+        months = sorted(m["month"] for m in c.get("/api/transactions?month=all").json()["months"])
+        lo, hi = months[2], months[4]
+        out = c.get("/api/transactions", params={"start": lo, "end": hi}).json()
+        got = {str(t["date"])[:7] for t in out["rows"]}
+        assert got and got <= {m for m in months if lo <= m <= hi}
+        assert c.get("/api/transactions", params={"start": "2026-13"}).status_code == 400
