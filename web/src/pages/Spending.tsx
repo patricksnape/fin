@@ -29,6 +29,7 @@ export default function Spending({ ccy }: { ccy: string }) {
   const accounts = useMemo(() => data && sliceMonths(data.by_account, months), [data, months]);
   // major purchases follow the range shown: only those from the first displayed month on
   const from = accounts?.rows[0]?.month;
+  const recurring = useMemo(() => (data ? data.recurring.filter((r) => !from || r.last_date.slice(0, 7) >= from) : []), [data, from]);
   const major = useMemo(() => (data ? data.major.filter((r) => !from || r.date.slice(0, 7) >= from) : []), [data, from]);
   if (!data || !cadence || !necessity || !category || !accounts) return <p className="text-sm text-muted">Loading…</p>;
 
@@ -129,8 +130,8 @@ export default function Spending({ ccy }: { ccy: string }) {
         </Card>
       )}
       <Card>
-        <CardHeader title="Recurring payments" subtitle={`${data.recurring.length} detected`} />
-        <DataTable columns={recurringCols} rows={data.recurring} />
+        <CardHeader title="Recurring payments" subtitle={`${recurring.length} paid in the last ${months} months`} />
+        <DataTable columns={recurringCols} rows={recurring} />
       </Card>
       <Card>
         <CardHeader title="Major purchases" subtitle={`Kept out of monthly spend, last ${months} months`} />
