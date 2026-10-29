@@ -25,6 +25,7 @@ export default function Spending({ ccy }: { ccy: string }) {
   const [group, setGroup] = useState<string | null>(null);
   const [picked, setPicked] = useState<{ month: string; group: string } | null>(null);
   const { data, isFetching } = useApi<SpendingData>(`/api/spending?view=${view}&months=240`);
+  const { data: flow } = useApi<{ rows: Array<Record<string, string>> }>("/api/cashflow?months=240");
   const mode = useMode();
   const slice = (p: Pivot): Pivot => (year ? { ...p, rows: p.rows.filter((r) => r.month.startsWith(year)) } : sliceMonths(p, months));
   const cadence = useMemo(() => data && slice(data.by_cadence), [data, range]);
@@ -36,6 +37,12 @@ export default function Spending({ ccy }: { ccy: string }) {
   const from = accounts?.rows[0]?.month;
   const to = year ? accounts?.rows[accounts.rows.length - 1]?.month : undefined;
   const inRange = (day: string) => (!from || day.slice(0, 7) >= from) && (!to || day.slice(0, 7) <= to);
+  // totals over the range: what came in, what was spent without and with the major purchases
+  const totals = useMemo(() => {
+    const rows = (flow?.rows ?? []).filter((r) => (!from || r.month.slice(0, 7) >= from) && (!to || r.month.slice(0, 7) <= to));
+    const sum = (k: string) => rows.reduce((t, r) => t + n(r[k]), 0);
+    return { earnings: sum("income"), spend: sum("spend"), major: sum("major") };
+  }, [flow, from, to]);
   const recurring = useMemo(() => (data ? data.recurring.filter((r) => (!from || r.last_date.slice(0, 7) >= from) && (!to || r.first_date.slice(0, 7) <= to)) : []), [data, from, to]);
   const major = useMemo(() => (data ? data.major.filter((r) => inRange(r.date)) : []), [data, from, to]);
   if (!data || !cadence || !necessity || !category || !accounts) return <p className="text-sm text-muted">Loading…</p>;
@@ -88,6 +95,9 @@ export default function Spending({ ccy }: { ccy: string }) {
         <p className="text-xs text-muted">{note}</p>
       </div>
       <div className="grid gap-4 [grid-template-columns:repeat(auto-fit,minmax(165px,1fr))]">
+        <Card><StatTile label="Total earnings" value={money(totals.earnings, ccy, 0)} hint={rangeText} /></Card>
+        <Card><StatTile label="Total spend" value={money(totals.spend + totals.major, ccy, 0)} hint={`with major purchases, ${rangeText}`} /></Card>
+        <Card><StatTile label="Spend without major purchases" value={money(totals.spend, ccy, 0)} hint={`${money(totals.major, ccy, 0)} major, ${rangeText}`} /></Card>
         <Card><StatTile label="Core monthly spend" value={money(h.core_monthly_spend, ccy, 0)} hint="last 3 full months, average" /></Card>
         <Card><StatTile label="Essential baseline" value={money(h.essential_baseline, ccy, 0)} hint="minimum monthly need" /></Card>
         <Card><StatTile label="Discretionary" value={money(h.discretionary, ccy, 0)} hint="average per month" /></Card>
