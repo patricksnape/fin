@@ -4,7 +4,7 @@ import { dateLabel, money, monthLabel, n, pct, signedMoney } from "../lib/format
 import { singleLine } from "../lib/charts";
 import { useMode } from "../lib/theme";
 import { ChartCard } from "../components/Chart";
-import { Card, StatTile } from "../components/ui";
+import { Card, StatTile, Loading } from "../components/ui";
 
 export default function Overview({ ccy }: { ccy: string }) {
   const { data: o, isFetching } = useApi<OverviewData>("/api/overview");
@@ -14,7 +14,7 @@ export default function Overview({ ccy }: { ccy: string }) {
     () => singleLine(series.map((p) => dateLabel(p.date).replace(/^\d+ /, "")), series.map((p) => n(p.value)), mode, "Net worth"),
     [series, mode],
   );
-  if (!o) return <p className="text-sm text-muted">Loading…</p>;
+  if (!o) return <Loading what="Loading the overview" />;
   const up = (s: string) => n(s) >= 0;
   const g = o.net_worth.by_group;
   const spend = o.spend;

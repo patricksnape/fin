@@ -4,7 +4,7 @@ import { dateLabel, money, n, pct, signedMoney } from "../lib/format";
 import { netWorthChart } from "../lib/charts";
 import { useMode } from "../lib/theme";
 import { ChartCard } from "../components/Chart";
-import { Card, CardHeader, Column, DataTable, StatTile, StatusBadge } from "../components/ui";
+import { Card, CardHeader, Column, DataTable, StatTile, StatusBadge, Loading } from "../components/ui";
 
 const TILES = ["Cash", "Investments", "Pension", "Property", "Vehicles"];
 
@@ -12,7 +12,7 @@ export default function NetWorth({ ccy }: { ccy: string }) {
   const { data, isFetching } = useApi<NetWorthData>("/api/networth");
   const mode = useMode();
   const option = useMemo(() => data && netWorthChart(data.rows, mode), [data, mode]);
-  if (!data || !option) return <p className="text-sm text-muted">Loading…</p>;
+  if (!data || !option) return <Loading what="Computing net worth" />;
   const last = data.rows[data.rows.length - 1];
   const prev = data.rows[data.rows.length - 2];
   const shown = TILES.filter((g) => data.rows.some((r) => n(r[g]) !== 0));

@@ -1,10 +1,10 @@
 import { Tile, useApi } from "../lib/api";
 import { Chart } from "../components/Chart";
-import { Card, CardHeader } from "../components/ui";
+import { Card, CardHeader, Loading } from "../components/ui";
 
 export default function Dashboards() {
   const { data } = useApi<{ tiles: Tile[] }>("/api/dashboards");
-  if (!data) return <p className="text-sm text-muted">Loading…</p>;
+  if (!data) return <Loading />;
   if (!data.tiles.length)
     return (
       <Card>

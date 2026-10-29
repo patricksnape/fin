@@ -6,7 +6,7 @@ const shortDate = (iso: string, withYear: boolean) => (withYear ? dateLabel(iso)
 const shortAccount = (a: string) => a.replace(/(Assets|Liabilities):/g, "").replaceAll(":", " › ");
 import { useQueryClient } from "@tanstack/react-query";
 import LabelEditor from "../components/LabelEditor";
-import { Card, Chip, Segmented, StatTile } from "../components/ui";
+import { Card, Chip, Segmented, StatTile, Loading } from "../components/ui";
 
 type KindFilter = "all" | Exclude<TxnKind, "opening">;
 
@@ -124,7 +124,7 @@ export default function Transactions({ ccy, initial = {} }: { ccy: string; initi
   if (card) params.set("card", card);
   const { data, isFetching } = useApi<TxnResponse>(`/api/transactions?${params}`);
   const accountList = useApi<AccountsData>("/api/accounts").data;
-  if (!data) return <p className="text-sm text-muted">Loading…</p>;
+  if (!data) return <Loading what="Loading transactions" />;
 
   const months = [...data.months].reverse();
   const idx = months.findIndex((m) => m.month === data.month);

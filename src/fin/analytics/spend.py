@@ -5,7 +5,7 @@ recurring series, then the expense account's `open` defaults. A posting is `majo
 >= major_threshold (or in major_accounts) unless it is recurring; majors are excluded from spend.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date
 from decimal import Decimal
 
@@ -33,6 +33,7 @@ class SpendModel:
     series: list[recurring.Series]
     as_of: date
     settings: Settings
+    _rows: dict = field(default_factory=dict, repr=False, compare=False)  # monthly_rows by view
 
 
 def build(
@@ -85,7 +86,15 @@ def build(
 
 def monthly_rows(model: SpendModel, view: str = "run_rate") -> pd.DataFrame:
     """Postings placed into months. `run_rate` spreads quarterly/yearly recurring payments evenly
-    over the months they cover (amount / months); `cash` keeps the payment month."""
+    over the months they cover (amount / months); `cash` keeps the payment month. Placing the
+    postings is the slow part of every spending figure, so it is done once per view and kept; treat
+    the result as read-only."""
+    if view not in model._rows:
+        model._rows[view] = _monthly_rows(model, view)
+    return model._rows[view]
+
+
+def _monthly_rows(model: SpendModel, view: str) -> pd.DataFrame:
     df, last = model.postings, month_start(model.as_of)
     by_id = {s.id: s for s in model.series}
     out = []

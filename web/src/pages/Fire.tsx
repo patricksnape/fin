@@ -6,7 +6,7 @@ import { curveChart, projectionChart } from "../lib/charts";
 import { useMode } from "../lib/theme";
 import { ChartCard } from "../components/Chart";
 import BacktestSection from "../components/Backtest";
-import { Card, CardHeader, Chip, DataTable, StatTile, StatusBadge } from "../components/ui";
+import { Card, CardHeader, Chip, DataTable, StatTile, StatusBadge, Loading } from "../components/ui";
 
 interface Inputs { withdrawal: string; ret: string; spend: string; birth: string; access: string; target: string }
 
@@ -79,7 +79,7 @@ export default function Fire({ ccy }: { ccy: string }) {
     const cur = s.contributions.savings_rate == null ? null : n(s.contributions.savings_rate);
     return { projection: projectionChart(s.projection, mode), curve: curveChart(s.savings_curve, cur, mode) };
   }, [s, mode]);
-  if (!inputs || first.isLoading) return <p className="text-sm text-muted">Loading…</p>;
+  if (!inputs || first.isLoading) return <Loading what="Computing" />;
   if (first.error) return <p className="text-sm text-bad">▲ {(first.error as Error).message}</p>;
   const set = (k: keyof Inputs) => (v: string) => {
     setMsg(null);

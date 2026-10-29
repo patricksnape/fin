@@ -13,6 +13,7 @@ the currency alone changed.
 
 from __future__ import annotations
 
+import functools
 from pathlib import Path
 
 import numpy as np
@@ -29,7 +30,12 @@ SPEND_STEPS = (0.6, 0.8, 1.0, 1.2, 1.4, 1.6)
 
 def load(root: Path) -> pd.DataFrame | None:
     path = root / SOURCE
-    return pd.read_stata(path) if path.exists() else None
+    return _read(path, path.stat().st_mtime_ns) if path.exists() else None
+
+
+@functools.lru_cache(maxsize=2)
+def _read(path: Path, _mtime: int) -> pd.DataFrame:
+    return pd.read_stata(path)
 
 
 def _by_country(jst: pd.DataFrame, column: str) -> pd.DataFrame:

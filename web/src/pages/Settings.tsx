@@ -3,7 +3,7 @@ import { Choice, SettingsData, useApi, useSaveSettings } from "../lib/api";
 import AccountSettings from "../components/AccountSettings";
 import Cards from "../components/Cards";
 import LabelRules from "../components/LabelRules";
-import { Card, CardHeader } from "../components/ui";
+import { Card, CardHeader, Loading } from "../components/ui";
 
 function RadioCards({ label, value, choices, onChange }: { label: string; value: string; choices: Choice[]; onChange: (id: string) => void }) {
   return (
@@ -41,7 +41,7 @@ export default function Settings() {
       setEffort(data.agent.effort);
     }
   }, [data]);
-  if (!data) return <p className="text-sm text-muted">Loading…</p>;
+  if (!data) return <Loading />;
   const dirty = model !== data.agent.model || effort !== data.agent.effort;
   return (
     <div className="max-w-3xl space-y-6">

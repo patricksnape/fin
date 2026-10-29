@@ -6,7 +6,7 @@ import { go } from "../lib/route";
 import { useMode } from "../lib/theme";
 import { ChartCard } from "../components/Chart";
 import { Sparkline } from "../components/Sparkline";
-import { Card, CardHeader, StatTile, StatusBadge } from "../components/ui";
+import { Card, CardHeader, StatTile, StatusBadge, Loading } from "../components/ui";
 
 const CASH = ["CHF", "USD", "EUR"];
 const pretty = (a: string) => a.replace(/^(Expenses|Income|Assets|Liabilities):/, "").replaceAll(":", " › ");
@@ -27,7 +27,7 @@ function Balance({ a, ccy }: { a: Account; ccy: string }) {
 
 function Overview({ ccy }: { ccy: string }) {
   const { data, isFetching } = useApi<AccountsData>("/api/accounts");
-  if (!data) return <p className="text-sm text-muted">Loading…</p>;
+  if (!data) return <Loading what="Loading accounts" />;
   return (
     <div className={`space-y-6 transition-opacity ${isFetching ? "opacity-60" : ""}`}>
       <div className="grid gap-4 [grid-template-columns:repeat(auto-fit,minmax(170px,1fr))]">
@@ -107,7 +107,7 @@ function Detail({ account, ccy }: { account: string; ccy: string }) {
   const info = data?.info ?? null;
   const chart = useMemo(() => (info ? lineChart(info.series.map((p) => dateLabel(p.date).replace(/^\d+ /, "")), info.series.map((p) => n(p.value)), mode, ccy, info.name) : null), [info, mode, ccy]);
   if (error) return <p className="text-sm text-bad">▲ {(error as Error).message}</p>;
-  if (!data || !info || !chart) return <p className="text-sm text-muted">Loading…</p>;
+  if (!data || !info || !chart) return <Loading what="Loading accounts" />;
   const rows = [...data.rows].reverse(); // newest first
   const months = [...data.months].reverse();
   return (

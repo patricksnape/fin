@@ -120,10 +120,10 @@ def detect(
     out = []
     df = df[df["payee"] != ""]
     df = df[~df["account"].str.startswith(exclude_prefixes)] if exclude_prefixes else df
+    df = df[df["amount"] > 0].sort_values("date", kind="stable")  # once, not for every group
     df = df.assign(norm=df["payee"].map(normalize_payee))
     for (norm, account), g in df.groupby(["norm", "account"]):
         sid = f"{norm}|{account}"
-        g = g[g["amount"] > 0].sort_values("date")
         if sid in rejected or len(g) < 2:
             continue
         dates, amounts = list(g["date"]), list(g["amount"])

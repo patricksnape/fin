@@ -5,14 +5,16 @@ quietly wrong number, so `Market` raises instead, and carries a lot with no pric
 """
 
 import calendar
+from collections import defaultdict
 from dataclasses import dataclass
-from datetime import date, timedelta
+from datetime import date
 from decimal import Decimal
 
-from beancount.core import convert, data, prices
+from beancount.core import convert, data, inventory, prices
 from beancount.core.amount import Amount
 from beancount.core.position import Position
-from beancount.ops import summarize
+
+_MARKETS: dict[tuple, tuple[list, "Market"]] = {}
 
 
 @dataclass(frozen=True)
@@ -22,7 +24,15 @@ class Market:
 
     @classmethod
     def of(cls, entries: list, base: str = "CHF") -> "Market":
-        return cls(prices.build_price_map(entries), base)
+        """Building the price map reads every entry, so a loaded ledger's is built once. The cache
+        holds the entries list itself, so its id cannot be reused by another list meanwhile."""
+        key = (id(entries), len(entries), base)
+        hit = _MARKETS.get(key)
+        if hit is None or hit[0] is not entries:
+            if len(_MARKETS) >= 4:
+                _MARKETS.pop(next(iter(_MARKETS)))
+            hit = _MARKETS[key] = (entries, cls(prices.build_price_map(entries), base))
+        return hit[1]
 
     def price(self, ccy: str, quote: str, d: date) -> Decimal | None:
         """Latest price of `ccy` in `quote` on or before `d`."""
@@ -61,9 +71,15 @@ def checkpoints(entries: list, as_of: date) -> list[date]:
 
 
 def balances_at(entries: list, dates: list[date]) -> dict[date, dict[str, list[Position]]]:
-    """Per-account positions at the end of each date (Beancount's own balance_by_account)."""
-    out = {}
-    for d in dates:
-        balances, _ = summarize.balance_by_account(entries, d + timedelta(days=1))
-        out[d] = {account: list(inv.get_positions()) for account, inv in balances.items()}
-    return out
+    """Per-account positions at the end of each date (what Beancount's balance_by_account gives),
+    in one pass over the entries: the running balances are read off at each date in turn."""
+    txns = sorted((e for e in entries if isinstance(e, data.Transaction)), key=lambda e: e.date)
+    running: dict[str, inventory.Inventory] = defaultdict(inventory.Inventory)
+    snapshots, i = {}, 0
+    for d in sorted(set(dates)):
+        while i < len(txns) and txns[i].date <= d:
+            for posting in txns[i].postings:
+                running[posting.account].add_position(posting)
+            i += 1
+        snapshots[d] = {account: list(inv.get_positions()) for account, inv in running.items()}
+    return {d: snapshots[d] for d in dates}

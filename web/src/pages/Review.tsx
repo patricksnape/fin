@@ -1,7 +1,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import CategoryPicker from "../components/CategoryPicker";
-import { Card, CardHeader } from "../components/ui";
+import { Card, CardHeader, Loading } from "../components/ui";
 import { useApi } from "../lib/api";
 import { dateLabel, int, money } from "../lib/format";
 
@@ -41,7 +41,7 @@ function flatten(o: unknown, path: string[] = []): Array<[string, string]> {
 /** Everything known about each payment of one merchant, including the source's own full record. */
 function Details({ payeeKey }: { payeeKey: string }) {
   const { data } = useApi<Detail[]>(`/api/review/details?payee_key=${encodeURIComponent(payeeKey)}`);
-  if (!data) return <p className="text-xs text-muted">Loading…</p>;
+  if (!data) return <Loading />;
   return (
     <div className="w-full space-y-3">
       {data.map((d) => (
@@ -163,7 +163,7 @@ export default function Review() {
   const { data } = useApi<Queue>("/api/review");
   const options = useApi<Options>("/api/labels/options").data;
   const [bulk, setBulk] = useState<string | null>(null);
-  if (!data || !options) return <p className="text-sm text-muted">Loading…</p>;
+  if (!data || !options) return <Loading />;
   const refresh = () => qc.invalidateQueries();
   const guesses = data.merchants.filter((m) => !m.needs_category);
 

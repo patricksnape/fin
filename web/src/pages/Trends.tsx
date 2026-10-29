@@ -4,7 +4,7 @@ import { dateLabel, money, monthLabel, n, pct } from "../lib/format";
 import { lineChart, overlayChart, simpleBars, stackedBars } from "../lib/charts";
 import { useMode } from "../lib/theme";
 import { ChartCard } from "../components/Chart";
-import { Card, CardHeader, Column, DataTable } from "../components/ui";
+import { Card, CardHeader, Column, DataTable, Loading } from "../components/ui";
 
 const label = (r: { year: number; partial?: boolean; months: number }) => (r.partial ? `${r.year}*` : String(r.year));
 const plain = (v: string | null, ccy: string) => (v == null ? "–" : money(v, ccy, 0).replace(`${ccy} `, ""));
@@ -45,7 +45,7 @@ export default function Trends({ ccy }: { ccy: string }) {
       rollSave: lineChart(windowed.map((r) => monthLabel(r.month.slice(0, 7))), windowed.map((r) => n(r.savings_rate_12m) * 100), mode, "%", "Savings rate"),
     };
   }, [data, mode]);
-  if (!data || !charts) return <p className="text-sm text-muted">Loading…</p>;
+  if (!data || !charts) return <Loading what="Computing trends" />;
 
   const cols: Column<AnnualRow>[] = [
     { key: "year", label: "Year", render: (a) => <span className="whitespace-nowrap">{a.year}{a.partial && <span className="ml-1 text-xs text-muted">· {a.months} mo*</span>}</span> },

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import Chat from "./components/Chat";
 import EmptyState from "./components/EmptyState";
+import { ProgressBar } from "./components/ui";
 import { Meta, useApi } from "./lib/api";
 import { dateLabel } from "./lib/format";
 import { useRoute } from "./lib/route";
@@ -74,6 +75,7 @@ export default function App() {
 
   return (
     <div className="flex h-[100dvh] flex-col text-ink md:flex-row">
+      <ProgressBar />
       {/* phones: a top bar and a drawer instead of the sidebar */}
       <div className="safe-top safe-x flex shrink-0 items-center gap-3 border-b border-hairline bg-surface px-4 py-2 md:hidden">
         <button onClick={() => setMenuOpen(true)} aria-label="Menu" aria-expanded={menuOpen} className="-ml-2 rounded-lg px-2 py-1 text-xl leading-none text-ink-2 hover:bg-hairline">☰</button>

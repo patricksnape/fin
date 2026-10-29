@@ -4,7 +4,7 @@ import { money, n, pct } from "../lib/format";
 import { bars } from "../lib/charts";
 import { useMode } from "../lib/theme";
 import { ChartCard } from "../components/Chart";
-import { Card, CardHeader, Column, DataTable, StatTile } from "../components/ui";
+import { Card, CardHeader, Column, DataTable, StatTile, Loading } from "../components/ui";
 
 const label = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
@@ -19,7 +19,7 @@ export default function Allocation({ ccy }: { ccy: string }) {
     return bars(rows.map((r) => label(r.asset_class!)), series, mode, "%");
   }, [data, mode]);
   const ccyOption = useMemo(() => data && bars(data.by_currency.map((r) => r.currency!), [{ name: "Exposure", values: data.by_currency.map((r) => n(r.weight) * 100), slot: 0 }], mode, "%"), [data, mode]);
-  if (!data || !classOption || !ccyOption) return <p className="text-sm text-muted">Loading…</p>;
+  if (!data || !classOption || !ccyOption) return <Loading what="Loading holdings" />;
 
   const total = data.holdings.reduce((s, h) => s + n(h.value), 0);
   const cols = (key: "asset_class" | "currency"): Column<AllocRow>[] => [

@@ -5,7 +5,7 @@ import { Part, breakdown, donut, foldTail, sliceMonths, stackedBars } from "../l
 import { useMode } from "../lib/theme";
 import { go } from "../lib/route";
 import { ChartCard } from "../components/Chart";
-import { Card, CardHeader, Column, DataTable, Segmented, StatTile, StatusBadge } from "../components/ui";
+import { Card, CardHeader, Column, DataTable, Segmented, StatTile, StatusBadge, Loading } from "../components/ui";
 
 type View = "run_rate" | "cash";
 
@@ -51,7 +51,7 @@ export default function Spending({ ccy }: { ccy: string }) {
   }, [data, from, to]);
   const recurring = useMemo(() => (data ? data.recurring.filter((r) => (!from || r.last_date.slice(0, 7) >= from) && (!to || r.first_date.slice(0, 7) <= to)) : []), [data, from, to]);
   const major = useMemo(() => (data ? data.major.filter((r) => inRange(r.date)) : []), [data, from, to]);
-  if (!data || !cadence || !necessity || !category || !accounts) return <p className="text-sm text-muted">Loading…</p>;
+  if (!data || !cadence || !necessity || !category || !accounts) return <Loading what="Computing spending" />;
 
   // a click on a bar or a month opens that slice of spending as transactions
   const open = (filter: Record<string, string>) => go("transactions", { kind: "expense", ...filter });

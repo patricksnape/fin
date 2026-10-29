@@ -1,4 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
+import { Loading } from "./ui";
 import CategoryPicker from "./CategoryPicker";
 import { useState } from "react";
 import { Txn, useApi } from "../lib/api";
@@ -27,7 +28,7 @@ export default function LabelEditor({ t, ccy }: { t: Txn; ccy: string }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [saved, setSaved] = useState<string | null>(null);
-  if (!options) return <p className="text-xs text-muted">Loading…</p>;
+  if (!options) return <Loading />;
 
   // only what changed is sent, so everything else keeps being worked out automatically
   const body: Record<string, unknown> = {};

@@ -1,3 +1,4 @@
+import { useIsFetching } from "@tanstack/react-query";
 import { ReactNode } from "react";
 
 export function Card({ children, className = "" }: { children: ReactNode; className?: string }) {
@@ -95,4 +96,20 @@ export function Chip({ on, onClick, children }: { on: boolean; onClick: () => vo
       {children}
     </button>
   );
+}
+
+/** A spinner with a line of text, for a page waiting on its first data. */
+export function Loading({ what = "Loading" }: { what?: string }) {
+  return (
+    <div role="status" className="flex items-center gap-2 text-sm text-muted">
+      <span aria-hidden className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-hairline border-t-accent" />
+      {what}…
+    </div>
+  );
+}
+
+/** A thin bar across the top of the window while anything is being fetched or computed. */
+export function ProgressBar() {
+  const busy = useIsFetching() > 0;
+  return busy ? <div aria-hidden className="fixed inset-x-0 top-0 z-50 h-0.5 animate-pulse bg-accent" /> : null;
 }

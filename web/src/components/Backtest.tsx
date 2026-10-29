@@ -4,7 +4,7 @@ import { money, n, pct } from "../lib/format";
 import { fanChart } from "../lib/charts";
 import { useMode } from "../lib/theme";
 import { ChartCard } from "./Chart";
-import { Card, CardHeader, DataTable, StatTile, StatusBadge } from "./ui";
+import { Card, CardHeader, DataTable, StatTile, StatusBadge, Loading } from "./ui";
 
 interface Backtest {
   ready: boolean; reason?: string;
@@ -27,7 +27,7 @@ export default function BacktestSection({ ccy }: { ccy: string }) {
   const s = Math.min(100, Math.max(0, Number(share.replace(",", ".")) || 0));
   const { data, isFetching } = useApi<Backtest>(`/api/fire/backtest?years=${y}&equity=${equity}&equity_share=${s / 100}`);
   const fan = useMemo(() => (data?.ready ? fanChart(data.fan, mode) : null), [data, mode]);
-  if (!data) return <p className="text-sm text-muted">Loading…</p>;
+  if (!data) return <Loading />;
   const c = data.ready ? data.currency : null;
   const usd = data.ready ? n(data.usd_share) : 0;
   return (
@@ -47,6 +47,7 @@ export default function BacktestSection({ ccy }: { ccy: string }) {
             <input value={share} onChange={(e) => setShare(e.target.value)} inputMode="decimal" className="w-24 rounded-lg border border-hairline bg-surface px-2 py-1.5 text-sm text-ink" />
           </label>
         </div>
+        {isFetching && <div className="mb-3"><Loading what="Running every historical start year" /></div>}
         {!data.ready ? (
           <p className="text-sm text-ink-2">{data.reason}</p>
         ) : (
