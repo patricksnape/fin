@@ -335,7 +335,8 @@ def _series(sym, program, mine, all_events, sold, held, px: Prices, as_of, base)
     return {
         "commodity": sym, "program": program, "currency": ccy, "price_now": now,
         "price_history": px.source(sym), "events": rows,
-        "awards": _awards(rows), "summary": _summary(rows),
+        "awards": _awards(rows, (px.conf.get(sym) or {}).get("granted") or {}, now),
+        "summary": _summary(rows),
     }  # fmt: skip
 
 
@@ -368,9 +369,12 @@ def _summary(rows: list[dict]) -> dict:
     }  # fmt: skip
 
 
-def _awards(rows: list[dict]) -> list[dict]:
+def _awards(rows: list[dict], granted: dict, now: Decimal | None) -> list[dict]:
     """One row per award (or ESPP offering): the price when it was granted against what its vests
-    were worth, share-weighted."""
+    were worth, share-weighted. With the number of shares each award granted (`granted` in
+    rules/rsu.yaml, which the broker states and the ledger cannot know for shares not yet vested), also
+    what was awarded against what it is worth now: vested shares at their vest price plus the rest at
+    the latest price."""
     groups: dict[tuple, list[dict]] = defaultdict(list)
     for r in rows:
         groups[(r["award"], r["start"])].append(r)
@@ -381,8 +385,23 @@ def _awards(rows: list[dict]) -> list[dict]:
         graded = [r for r in rs if r.get("start_price")]
         v0 = sum((r["gross"] * r["start_price"] for r in graded), Decimal(0))
         v1 = sum((r["gross"] * r["price"] for r in graded), Decimal(0))
+        units = granted.get(start.isoformat()) if start else None
+        units = Decimal(str(units)) if units is not None else None
+        gross = _sum(rs, "gross")
+        extra = {}
+        if units is not None and graded and now is not None:
+            vested_value = sum((r["gross"] * r["price"] for r in rs), Decimal(0))
+            left_units = max(units - gross, Decimal(0))
+            award_value = units * graded[0]["start_price"]
+            extra = {
+                "granted": units, "unvested": left_units, "award_value": _q(award_value),
+                "vested_value": _q(vested_value), "unvested_value": _q(left_units * now),
+                "worth_now": _q(vested_value + left_units * now),
+                "vs_award": ((vested_value + left_units * now) / award_value - 1).quantize(PCT) if award_value else None,
+            }  # fmt: skip
         out.append(
             {
+                **extra,
                 "award": award, "start": start, "name": rs[0]["award_name"], "events": len(rs),
                 "first": min(r["day"] for r in rs), "last": max(r["day"] for r in rs),
                 "gross": _sum(rs, "gross"), "net": _sum(rs, "net"),

@@ -189,6 +189,7 @@ export interface ShareAward {
   award: string; start: string | null; name: string | null; events: number; first: string; last: string;
   gross: string; net: string; start_price: string | null; avg_price: string | null; growth: string | null;
   gain_usd: string | null; gain_chf: string | null;
+  granted?: string; unvested?: string; award_value?: string; vested_value?: string; unvested_value?: string; worth_now?: string; vs_award?: string | null;
 }
 export interface ShareSummary {
   events: number; gross: string; withheld: string; net: string; sold: string; left: string;

@@ -158,3 +158,17 @@ def test_an_award_can_be_priced_at_the_previous_close(entries, tmp_path):
     (tmp_path / "rules" / "rsu.yaml").unlink()
     got = next(x for x in rsu.report(ents, tmp_path, AS_OF)["series"] if x["program"] == "rsu")
     assert got["events"][0]["start_price"] == D(110)
+
+
+def test_awarded_against_worth_now_uses_the_shares_the_broker_says_were_granted(entries, tmp_path):
+    (tmp_path / "rules").mkdir()
+    (tmp_path / "rules" / "rsu.yaml").write_text("ACME:\n  granted:\n    '2022-10-01': 40\n")
+    d = tmp_path / "sources" / "market-history"
+    d.mkdir(parents=True)
+    (d / "ACME.csv").write_text("Date,Open,High,Low,Close,Volume\n2022-09-30,1,1,1,100,1\n")
+    got = next(x for x in rsu.report(entries, tmp_path, AS_OF)["series"] if x["program"] == "rsu")
+    [a] = got["awards"]
+    # 40 granted at 100 = 4000; 10 vested at 150.25; the other 30 at the latest price of 210
+    assert (a["granted"], a["unvested"], a["award_value"]) == (D(40), D(30), D("4000.00"))
+    assert a["vested_value"] == D("1502.50") and a["unvested_value"] == D("6300.00")
+    assert a["worth_now"] == D("7802.50") and a["vs_award"] == D("0.9506")

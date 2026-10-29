@@ -85,7 +85,19 @@ export default function Rsu({ ccy }: { ccy: string }) {
       mode,
       unit,
     );
-    return { award, held, days, byDay };
+    const sized = s.awards.filter((a) => a.award_value);
+    const worth = sized.length
+      ? bars(
+          sized.map((a) => dateLabel(a.start ?? "").replace(/^\d+ /, "")),
+          [
+            { name: "Value when awarded", values: sized.map((a) => n(a.award_value)), slot: 0 },
+            { name: "Worth now (vested at vest price, the rest at the latest price)", values: sized.map((a) => n(a.worth_now)), slot: 2 },
+          ],
+          mode,
+          s.currency,
+        )
+      : null;
+    return { award, held, days, byDay, worth, sized };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [s, mode, cur]);
 
@@ -145,6 +157,20 @@ export default function Rsu({ ccy }: { ccy: string }) {
         {s.program === "espp" && <Card><StatTile label="Discount" value={money(sm.discount_usd, s.currency, 0)} hint="below the market price at purchase" /></Card>}
       </Section>
 
+      {charts.sized.length > 0 && (() => {
+        const sum = (k: "award_value" | "vested_value" | "unvested_value" | "worth_now") => charts.sized.reduce((t, a) => t + n(a[k]), 0);
+        const granted = charts.sized.reduce((t, a) => t + n(a.granted), 0);
+        const unvested = charts.sized.reduce((t, a) => t + n(a.unvested), 0);
+        return (
+          <Section title="Awarded against worth now">
+            <Card><StatTile label="Shares awarded" value={granted.toLocaleString("de-CH", { maximumFractionDigits: 0 })} hint={`${unvested.toLocaleString("de-CH", { maximumFractionDigits: 0 })} still to vest`} /></Card>
+            <Card><StatTile label="Value when awarded" value={money(sum("award_value"), s.currency, 0)} hint="shares awarded at the price of the award date" /></Card>
+            <Card><StatTile label="Worth now" value={money(sum("worth_now"), s.currency, 0)} hint={`vested ${money(sum("vested_value"), s.currency, 0)} at vest, to vest ${money(sum("unvested_value"), s.currency, 0)} at the latest price`} /></Card>
+            <Card><StatTile label="Against the award" value={sum("award_value") ? pct(sum("worth_now") / sum("award_value") - 1, 0) : "–"} hint="before tax kept back at vest" /></Card>
+          </Section>
+        );
+      })()}
+
       <Section title="Held against sold at the vest">
         <Card><StatTile label="Selling at each vest" value={money(sellAt, unit, 0)} hint="net shares at the vest price" /></Card>
         <Card><StatTile label="What happened" value={money(actual, unit, 0)} hint="sales after fees plus what is left" /></Card>
@@ -160,6 +186,16 @@ export default function Rsu({ ccy }: { ccy: string }) {
         columns={[{ key: "label", label: "Award" }, { key: "start", label: "Price then", align: "right" }, { key: "avg", label: "Price at vest", align: "right" }, { key: "growth", label: "Growth", align: "right" }, { key: "gain", label: `Gained, ${unit}`, align: "right" }]}
         rows={s.awards.map((a) => ({ label: `${a.start ? dateLabel(a.start) : "?"} (${a.events})`, start: a.start_price ? money(a.start_price, s.currency, 2) : "–", avg: a.avg_price ? money(a.avg_price, s.currency, 2) : "–", growth: a.growth ? pct(a.growth, 0) : "–", gain: a.gain_usd ? money(cur === "chf" ? a.gain_chf ?? 0 : a.gain_usd, unit, 0) : "–" }))}
       />
+      {charts.worth && (
+        <ChartCard
+          title="Awarded against worth now"
+          subtitle={`In ${s.currency}, by award: what the shares awarded were worth on the award date against what they are worth now`}
+          loading={isFetching}
+          option={charts.worth}
+          columns={[{ key: "label", label: "Award" }, { key: "granted", label: "Granted", align: "right" }, { key: "unvested", label: "To vest", align: "right" }, { key: "award", label: "At award", align: "right" }, { key: "now", label: "Worth now", align: "right" }, { key: "vs", label: "Against", align: "right" }]}
+          rows={charts.sized.map((a) => ({ label: a.start ? dateLabel(a.start) : "?", granted: n(a.granted).toLocaleString("de-CH", { maximumFractionDigits: 0 }), unvested: n(a.unvested).toLocaleString("de-CH", { maximumFractionDigits: 0 }), award: money(a.award_value, s.currency, 0), now: money(a.worth_now, s.currency, 0), vs: a.vs_award ? pct(a.vs_award, 0) : "–" }))}
+        />
+      )}
       <ChartCard
         title="Held against sold, by vest date"
         subtitle={`In ${unit}: what each vest day turned out to be worth, against selling the shares the day they arrived`}
