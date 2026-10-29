@@ -7,6 +7,8 @@ from pathlib import Path
 from beancount import loader
 from beancount.core import data
 
+from fin import depreciation
+
 # Beancount's own pickle cache does not notice new files matched by `include "dir/*.beancount"`, so
 # a freshly written month or rules file would be silently missing. Our cache below is keyed on
 # the newest mtime of every file under ledger/, which does.
@@ -34,6 +36,7 @@ def load(main: Path) -> Ledger:
     if cached and cached[0] == stamp:
         return cached[1]
     entries, errors, options = loader.load_file(str(main))
+    entries = depreciation.with_prices(entries)
     ledger = Ledger(entries, errors, options, main)
     _cache[main] = (stamp, ledger)
     return ledger
