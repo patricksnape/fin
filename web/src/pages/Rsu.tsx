@@ -97,7 +97,34 @@ export default function Rsu({ ccy }: { ccy: string }) {
           s.currency,
         )
       : null;
-    return { award, held, days, byDay, worth, sized };
+    // the shares that have vested, award by award: what they were worth when awarded, at vest, what was kept for tax,
+    // what arrived, and what that turned into (sales after fees plus what is still held, at the latest price)
+    const by = new Map<string, { start: string; gross: number; atAward: number; atVest: number; tax: number; received: number; now: number }>();
+    for (const e of s.events) {
+      if (!e.start || !e.start_price) continue;
+      const g = by.get(e.start) ?? { start: e.start, gross: 0, atAward: 0, atVest: 0, tax: 0, received: 0, now: 0 };
+      g.gross += n(e.gross);
+      g.atAward += n(e.gross) * n(e.start_price);
+      g.atVest += n(e.gross) * n(e.price);
+      g.tax += n(e.withheld) * n(e.price);
+      g.received += n(e.net) * n(e.price);
+      g.now += n(e.actual_usd);
+      by.set(e.start, g);
+    }
+    const vested = [...by.values()].sort((a, b) => (a.start < b.start ? -1 : 1));
+    const vestedChart = vested.length
+      ? bars(
+          vested.map((v) => dateLabel(v.start).replace(/^\d+ /, "")),
+          [
+            { name: "Value when awarded", values: vested.map((v) => Math.round(v.atAward)), slot: 0 },
+            { name: "Value at vest", values: vested.map((v) => Math.round(v.atVest)), slot: 2 },
+            { name: "What you have now (after tax kept back, sales and fees)", values: vested.map((v) => Math.round(v.now)), slot: 3 },
+          ],
+          mode,
+          s.currency,
+        )
+      : null;
+    return { award, held, days, byDay, worth, sized, vested, vestedChart };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [s, mode, cur]);
 
@@ -157,6 +184,20 @@ export default function Rsu({ ccy }: { ccy: string }) {
         {s.program === "espp" && <Card><StatTile label="Discount" value={money(sm.discount_usd, s.currency, 0)} hint="below the market price at purchase" /></Card>}
       </Section>
 
+      {charts.vested.length > 0 && (() => {
+        const t = charts.vested.reduce((a, v) => ({ gross: a.gross + v.gross, atAward: a.atAward + v.atAward, atVest: a.atVest + v.atVest, tax: a.tax + v.tax, received: a.received + v.received, now: a.now + v.now }), { gross: 0, atAward: 0, atVest: 0, tax: 0, received: 0, now: 0 });
+        return (
+          <Section title={`Vested shares only, in ${s.currency}`}>
+            <Card><StatTile label="Value when awarded" value={money(t.atAward, s.currency, 0)} hint={`${t.gross.toLocaleString("de-CH", { maximumFractionDigits: 0 })} vested shares at their award-date price`} /></Card>
+            <Card><StatTile label="Value at vest" value={money(t.atVest, s.currency, 0)} hint={`${pct(t.atVest / t.atAward - 1, 0)} on the award, before tax`} /></Card>
+            <Card><StatTile label="Kept back for tax" value={money(t.tax, s.currency, 0)} hint={`${pct(t.tax / t.atVest, 0)} of the vest value, in shares`} /></Card>
+            <Card><StatTile label="Received" value={money(t.received, s.currency, 0)} hint="net shares at their vest price" /></Card>
+            <Card><StatTile label="What you have now" value={money(t.now, s.currency, 0)} hint="sales after fees plus shares still held, at the latest price" /></Card>
+            <Card><StatTile label="Against the award" value={pct(t.now / t.atAward - 1, 0)} hint={`after tax kept back; ${money(t.now - t.received, s.currency, 0)} since the vests`} /></Card>
+          </Section>
+        );
+      })()}
+
       {charts.sized.length > 0 && (() => {
         const sum = (k: "award_value" | "vested_value" | "unvested_value" | "worth_now") => charts.sized.reduce((t, a) => t + n(a[k]), 0);
         const granted = charts.sized.reduce((t, a) => t + n(a.granted), 0);
@@ -186,6 +227,16 @@ export default function Rsu({ ccy }: { ccy: string }) {
         columns={[{ key: "label", label: "Award" }, { key: "start", label: "Price then", align: "right" }, { key: "avg", label: "Price at vest", align: "right" }, { key: "growth", label: "Growth", align: "right" }, { key: "gain", label: `Gained, ${unit}`, align: "right" }]}
         rows={s.awards.map((a) => ({ label: `${a.start ? dateLabel(a.start) : "?"} (${a.events})`, start: a.start_price ? money(a.start_price, s.currency, 2) : "–", avg: a.avg_price ? money(a.avg_price, s.currency, 2) : "–", growth: a.growth ? pct(a.growth, 0) : "–", gain: a.gain_usd ? money(cur === "chf" ? a.gain_chf ?? 0 : a.gain_usd, unit, 0) : "–" }))}
       />
+      {charts.vestedChart && (
+        <ChartCard
+          title="Vested shares: awarded, vested, and what you have now"
+          subtitle={`In ${s.currency}, by award, for the shares that have vested so far. The last bar is after the shares kept back for tax, and includes sales and what you still hold`}
+          loading={isFetching}
+          option={charts.vestedChart}
+          columns={[{ key: "label", label: "Award" }, { key: "shares", label: "Vested", align: "right" }, { key: "award", label: "At award", align: "right" }, { key: "vest", label: "At vest", align: "right" }, { key: "tax", label: "Kept for tax", align: "right" }, { key: "now", label: "You have now", align: "right" }, { key: "vs", label: "Against award", align: "right" }]}
+          rows={charts.vested.map((v) => ({ label: dateLabel(v.start), shares: v.gross.toLocaleString("de-CH", { maximumFractionDigits: 0 }), award: money(v.atAward, s.currency, 0), vest: money(v.atVest, s.currency, 0), tax: money(v.tax, s.currency, 0), now: money(v.now, s.currency, 0), vs: pct(v.now / v.atAward - 1, 0) }))}
+        />
+      )}
       {charts.worth && (
         <ChartCard
           title="Awarded against worth now"
