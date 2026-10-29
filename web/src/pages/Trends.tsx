@@ -3,6 +3,7 @@ import { AnnualRow, Trends as TrendsData, useApi } from "../lib/api";
 import { dateLabel, money, monthLabel, n, pct } from "../lib/format";
 import { lineChart, overlayChart, simpleBars, stackedBars } from "../lib/charts";
 import { useMode } from "../lib/theme";
+import { go } from "../lib/route";
 import { ChartCard } from "../components/Chart";
 import { Card, CardHeader, Column, DataTable, Loading } from "../components/ui";
 
@@ -31,6 +32,8 @@ export default function Trends({ ccy }: { ccy: string }) {
     const byYear = stackedBars(pivot, mode, false);
     byYear.xAxis.data = pivot.rows.map((r) => (partial.has(r.month) ? `${r.month}*` : r.month));
     return {
+      pivot,
+      rest,
       byYear,
       savings: simpleBars(annual.map(label), annual.map((a) => n(a.savings_rate) * 100), mode, "%", "Savings rate"),
       growth: (() => {
@@ -46,6 +49,17 @@ export default function Trends({ ccy }: { ccy: string }) {
     };
   }, [data, mode]);
   if (!data || !charts) return <Loading what="Computing trends" />;
+  // a bar opens that year's transactions (and its category, when it is a category bar)
+  const yearRange = (y: string | number) => ({ start: `${String(y).replace("*", "")}-01`, end: `${String(y).replace("*", "")}-12` });
+  const pickCategory = (e: { seriesIndex: number; dataIndex: number }) => {
+    const key = charts.pivot.keys[e.seriesIndex];
+    const year = charts.pivot.rows[e.dataIndex]?.month;
+    if (key && year) go("transactions", { kind: "expense", ...yearRange(year), category: key === "Other" ? charts.rest.join(",") : key });
+  };
+  const pickYear = (e: { dataIndex: number }) => {
+    const a = data.annual[e.dataIndex];
+    if (a) go("transactions", yearRange(a.year));
+  };
 
   const cols: Column<AnnualRow>[] = [
     { key: "year", label: "Year", render: (a) => <span className="whitespace-nowrap">{a.year}{a.partial && <span className="ml-1 text-xs text-muted">· {a.months} mo*</span>}</span> },
@@ -73,12 +87,13 @@ export default function Trends({ ccy }: { ccy: string }) {
         <DataTable columns={cols} rows={data.annual} />
       </Card>
       <div className="grid gap-6 xl:grid-cols-2">
-        <ChartCard title="Spend per month, by year" subtitle="Average per complete month, top five categories" loading={isFetching} option={charts.byYear} columns={tableCols(catKeys)} rows={catRows} />
-        <ChartCard title="Savings rate by year" subtitle="Saved as a share of income" loading={isFetching} option={charts.savings} columns={[{ key: "month", label: "Year" }, { key: "v", label: "Rate", align: "right" }]} rows={simpleRows(data.annual.map(label), data.annual.map((a) => n(a.savings_rate)), (v) => `${(v * 100).toFixed(1)}%`)} />
+        <ChartCard title="Spend per month, by year" subtitle="Average per complete month, top five categories. Click a bar to see its transactions." onPick={pickCategory} loading={isFetching} option={charts.byYear} columns={tableCols(catKeys)} rows={catRows} />
+        <ChartCard title="Savings rate by year" subtitle="Saved as a share of income. Click a bar to see that year." onPick={pickYear} loading={isFetching} option={charts.savings} columns={[{ key: "month", label: "Year" }, { key: "v", label: "Rate", align: "right" }]} rows={simpleRows(data.annual.map(label), data.annual.map((a) => n(a.savings_rate)), (v) => `${(v * 100).toFixed(1)}%`)} />
       </div>
       <ChartCard
         title="Where net worth growth came from"
         subtitle="Saved is income minus expenses; the rest is markets, FX and your own valuations of home and car"
+        onPick={pickYear}
         loading={isFetching}
         option={charts.growth}
         height={300}

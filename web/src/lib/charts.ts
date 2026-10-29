@@ -209,7 +209,7 @@ export function inOutChart(rows: Array<{ month: string; income: number; out: num
     yAxis: { type: "value", name: "CHF" },
     series: [
       { name: "Earned", type: "bar", stack: "flow", itemStyle: { color: seriesColor(mode, 0) }, data: rows.map((r) => Math.round(r.income)) },
-      { name: "Spent", type: "bar", stack: "flow", itemStyle: { color: seriesColor(mode, 2) }, data: rows.map((r) => -Math.round(r.out)) },
+      { name: "Spent", type: "bar", stack: "flow", itemStyle: { color: seriesColor(mode, 7) }, data: rows.map((r) => -Math.round(r.out)) },
     ],
   };
 }
