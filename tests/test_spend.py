@@ -122,3 +122,18 @@ def test_next_due_follows_the_calendar(m):
 
 def test_fees_are_never_recurring_series(m):
     assert not any("Fees" in sid for sid in series(m))
+
+
+def test_an_account_can_say_its_large_payments_are_not_major(tmp_path):
+    from fin import account_admin
+
+    root = tmp_path / "repo"
+    demo.create_demo(root)
+    before = spend.major_purchases(model(root))
+    shop = before.iloc[0]["account"]
+    account_admin.set_account(root, shop, {"major": False})
+    assert "major: FALSE" in (root / "ledger" / "accounts.beancount").read_text()
+    after = spend.major_purchases(model(root))
+    assert shop not in set(after["account"]) and len(after) < len(before)
+    account_admin.set_account(root, shop, {"major": None})  # removing the setting restores it
+    assert len(spend.major_purchases(model(root))) == len(before)

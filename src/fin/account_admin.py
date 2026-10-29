@@ -101,10 +101,11 @@ def add_account(
 
 
 def set_account(root: Path, account: str, changes: dict) -> None:
-    """Change `group` and/or `institution` on an existing account; None removes the setting."""
+    """Change `group`, `institution` and/or `major` (True/False: whether the account's large
+    payments count as major purchases) on an existing account; None removes the setting."""
     from fin import config, ledger
 
-    unknown = set(changes) - {"group", "institution"}
+    unknown = set(changes) - {"group", "institution", "major"}
     if unknown:
         raise ValueError(f"unknown setting: {', '.join(sorted(unknown))}")
     with gitops.write_lock(root):
@@ -125,7 +126,9 @@ def set_account(root: Path, account: str, changes: dict) -> None:
         block = lines[start:end]
         for key, value in changes.items():
             block = [ln for ln in block if not (m := _META.match(ln)) or m.group(1) != key]
-            if value is not None:
+            if isinstance(value, bool):
+                block.append(f"  {key}: {'TRUE' if value else 'FALSE'}")
+            elif value is not None:
                 block.append(f'  {key}: "{value}"')
         lines[start:end] = block
         path.write_text("\n".join(lines))

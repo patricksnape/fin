@@ -50,7 +50,9 @@ def expense_postings(led: Ledger, base: str = "CHF") -> pd.DataFrame:
                     "necessity": dm.get("necessity", "discretionary"),
                     "explicit_cadence": pm.get("cadence", tm.get("cadence")),
                     "explicit_necessity": pm.get("necessity", tm.get("necessity")),
-                    "explicit_major": _flag(pm.get("major", tm.get("major"))),
+                    # the posting's or transaction's own flag, else the account's (`major: FALSE` on
+                    # an account of bills or aggregates, so its large payments are never "major")
+                    "explicit_major": _flag(pm.get("major", tm.get("major", dm.get("major")))),
                     "tags": tuple(sorted(e.tags or ())),
                 }
             )
