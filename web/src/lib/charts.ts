@@ -198,3 +198,18 @@ export function fanChart(fan: Array<{ year: number; p10: number; p50: number; p9
     series: [line("Weaker 10%", "p10", 2, true), line("Median", "p50", 0), line("Stronger 10%", "p90", 1, true)],
   };
 }
+
+/** Earned (up) against spent (down), month by month; each month's label carries the share of earnings left. */
+export function inOutChart(rows: Array<{ month: string; income: number; out: number }>, mode: Mode): any {
+  return {
+    xAxis: {
+      type: "category",
+      data: rows.map((r) => `${monthLabel(r.month.slice(0, 7))}\n${r.income > 0 ? `${Math.round(((r.income - r.out) / r.income) * 100)}%` : "–"}`),
+    },
+    yAxis: { type: "value", name: "CHF" },
+    series: [
+      { name: "Earned", type: "bar", stack: "flow", itemStyle: { color: seriesColor(mode, 0) }, data: rows.map((r) => Math.round(r.income)) },
+      { name: "Spent", type: "bar", stack: "flow", itemStyle: { color: seriesColor(mode, 2) }, data: rows.map((r) => -Math.round(r.out)) },
+    ],
+  };
+}

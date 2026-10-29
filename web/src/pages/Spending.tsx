@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { Alert, Pivot, Series, Spending as SpendingData, useApi } from "../lib/api";
-import { dateLabel, money, monthLabel, n, signedMoney } from "../lib/format";
-import { FOLD_LABEL, Fold, Part, breakdown, donut, foldTail, sliceMonths, stackedBars } from "../lib/charts";
+import { dateLabel, money, monthLabel, n, pct, signedMoney } from "../lib/format";
+import { FOLD_LABEL, Fold, Part, breakdown, donut, foldTail, inOutChart, sliceMonths, stackedBars } from "../lib/charts";
 import { useMode } from "../lib/theme";
 import { go } from "../lib/route";
 import { ChartCard } from "../components/Chart";
@@ -39,11 +39,12 @@ export default function Spending({ ccy }: { ccy: string }) {
   const to = year ? accounts?.rows[accounts.rows.length - 1]?.month : undefined;
   const inRange = (day: string) => (!from || day.slice(0, 7) >= from) && (!to || day.slice(0, 7) <= to);
   // totals over the range: what came in, what was spent without and with the major purchases
+  const flowRows = useMemo(() => (flow?.rows ?? []).filter((r) => (!from || r.month.slice(0, 7) >= from) && (!to || r.month.slice(0, 7) <= to)), [flow, from, to]);
   const totals = useMemo(() => {
-    const rows = (flow?.rows ?? []).filter((r) => (!from || r.month.slice(0, 7) >= from) && (!to || r.month.slice(0, 7) <= to));
-    const sum = (k: string) => rows.reduce((t, r) => t + n(r[k]), 0);
-    return { in: sum("income"), earnings: sum("salary"), spend: sum("spend"), major: sum("major"), taxes: sum("taxes") + sum("payroll_deductions"), out: sum("expenses") };
-  }, [flow, from, to]);
+    const sum = (k: string) => flowRows.reduce((t, r) => t + n(r[k]), 0);
+    return { in: sum("income"), earnings: sum("salary"), spend: sum("spend"), major: sum("major"), taxes: sum("taxes") + sum("payroll_deductions"), out: sum("expenses"), cashIn: sum("cash_income"), cashNet: sum("net_excl_equity") };
+  }, [flowRows]);
+  const inOut = useMemo(() => inOutChart(flowRows.map((r) => ({ month: r.month, income: n(r.salary), out: n(r.spend) + n(r.major) })), mode), [flowRows, mode]);
   // the headline averages are over the months shown, complete months only
   const average = useMemo(() => {
     const rows = (data?.monthly_headline ?? []).filter((r) => r.month !== data?.partial_month && (!from || r.month >= from) && (!to || r.month <= to));
@@ -107,6 +108,8 @@ export default function Spending({ ccy }: { ccy: string }) {
         <p className="text-xs text-muted">{note}</p>
       </div>
       <div className="grid gap-4 [grid-template-columns:repeat(auto-fit,minmax(165px,1fr))]">
+        <Card><StatTile hero label="Savings rate" value={totals.earnings > 0 ? pct((totals.earnings - totals.spend - totals.major) / totals.earnings, 0) : "–"} hint={`${money(totals.earnings - totals.spend - totals.major, ccy, 0)} left of ${money(totals.earnings, ccy, 0)} salary and bonus after spending, before tax, ${rangeText}`} /></Card>
+        <Card><StatTile label="Kept of all income" value={totals.in > 0 ? pct((totals.in - totals.out) / totals.in, 0) : "–"} hint={`all income incl. share vests, against everything out incl. tax, ${rangeText}`} /></Card>
         <Card><StatTile label="Total in" value={money(totals.in, ccy, 0)} hint={`all income, ${rangeText}`} /></Card>
         <Card><StatTile label="Total out" value={money(totals.out, ccy, 0)} hint={`incl. ${money(totals.taxes, ccy, 0)} tax and deductions`} /></Card>
         <Card><StatTile label="In minus out" value={money(totals.in - totals.out, ccy, 0)} hint={rangeText} /></Card>
@@ -118,6 +121,14 @@ export default function Spending({ ccy }: { ccy: string }) {
         <Card><StatTile label="Discretionary" value={money(average.discretionary, ccy, 0)} hint="average per month" /></Card>
         <Card><StatTile label="Major purchases" value={money(major.reduce((t, r) => t + n(r.amount), 0), ccy, 0)} hint={`not in monthly spend, ${rangeText}`} /></Card>
       </div>
+      <ChartCard
+        title="Earned vs spent"
+        subtitle="Salary and bonus (up) against everything you spent, major purchases included (down), before tax. The percentage under each month is the share of earnings left."
+        loading={isFetching}
+        option={inOut}
+        columns={[{ key: "month", label: "Month" }, { key: "in", label: "Earned", align: "right" }, { key: "out", label: "Spent", align: "right" }, { key: "rate", label: "Left", align: "right" }]}
+        rows={flowRows.map((r) => ({ month: monthLabel(r.month.slice(0, 7)), in: money(r.salary, ccy, 0), out: money(n(r.spend) + n(r.major), ccy, 0), rate: n(r.salary) > 0 ? pct((n(r.salary) - n(r.spend) - n(r.major)) / n(r.salary), 0) : "–" }))}
+      />
       <ChartCard title="Spend by cadence" subtitle="Recurring payments, regular variable spend, and one-offs. Click a bar to see its transactions." onPick={pickFrom(cadence, "cadence")} loading={isFetching} option={stackedBars(cadence, mode, true)} columns={monthCols(cadence.keys)} rows={cadence.rows} />
       <div className="grid gap-6 xl:grid-cols-2">
         <ChartCard

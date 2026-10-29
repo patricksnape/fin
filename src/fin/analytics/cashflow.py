@@ -74,6 +74,11 @@ def cashflow(led: Ledger, model: SpendModel, base: str = "CHF") -> pd.DataFrame:
                 **{k: t[k].quantize(Decimal("0.01")) for k in EXPENSE_GROUPS},
                 "expenses": expenses.quantize(Decimal("0.01")),
                 "net": net.quantize(Decimal("0.01")),
+                # the parts of savings_rate_excl_equity, so any run of months can be summed and divided
+                "cash_income": cash_income.quantize(Decimal("0.01")),
+                "net_excl_equity": (
+                    net - t["equity_comp"] + t["rsu_withholding"] - t["realized_gains"]
+                ).quantize(Decimal("0.01")),
                 "savings_rate": _rate(net, income),
                 "savings_rate_excl_equity": _rate(
                     net - t["equity_comp"] + t["rsu_withholding"] - t["realized_gains"], cash_income
