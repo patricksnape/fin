@@ -54,6 +54,8 @@ def holdings(
             name = meta.get(commodity, {}).get("name", commodity)
         price = market.price(commodity, quote, as_of) if commodity not in CASH_CCYS else None
         has_cost = a["cost_total"] != 0
+        # worth in its own currency: units at the price, or the cash itself
+        native = a["units"] if price is None else a["units"] * price
         rows.append(
             {
                 "account": account,
@@ -66,6 +68,7 @@ def holdings(
                 if has_cost
                 else None,
                 "price": price,
+                "native_value": native.quantize(Decimal("0.01")),
                 "value": a["value"].quantize(Decimal("0.01")),
                 "unrealized": (a["units"] * price - a["cost_total"]).quantize(Decimal("0.01"))
                 if has_cost and price
@@ -82,7 +85,10 @@ def allocation(
     df: pd.DataFrame, by: str = "asset_class", targets: dict[str, Decimal] | None = None
 ) -> pd.DataFrame:
     """Weights by `by` (asset_class | currency | commodity); with targets adds target and drift."""
-    out = df.groupby(by, as_index=False).agg(value=("value", "sum"), weight=("weight", "sum"))
+    sums = {"value": ("value", "sum"), "weight": ("weight", "sum")}
+    if by == "currency":  # what each currency holds in its own money
+        sums["native_value"] = ("native_value", "sum")
+    out = df.groupby(by, as_index=False).agg(**sums)
     out = out.sort_values("value", ascending=False).reset_index(drop=True)
     if targets:
         out["target"] = [targets.get(k, Decimal(0)) for k in out[by]]

@@ -24,6 +24,7 @@ export default function Allocation({ ccy }: { ccy: string }) {
   const total = data.holdings.reduce((s, h) => s + n(h.value), 0);
   const cols = (key: "asset_class" | "currency"): Column<AllocRow>[] => [
     { key, label: key === "currency" ? "Currency" : "Class", render: (r) => label(String(r[key])) },
+    ...(key === "currency" ? [{ key: "native_value", label: "In its own currency", align: "right" as const, render: (r: AllocRow) => (r.native_value ? money(r.native_value, String(r.currency), 0) : "–") }] : []),
     { key: "value", label: ccy, align: "right", render: (r) => money(r.value, ccy, 0) },
     { key: "weight", label: "Weight", align: "right", render: (r) => pct(r.weight) },
     { key: "target", label: "Target", align: "right", render: (r) => (r.target != null ? pct(r.target, 0) : "–") },
@@ -33,7 +34,9 @@ export default function Allocation({ ccy }: { ccy: string }) {
     { key: "name", label: "Holding", render: (h) => <span>{h.name}<span className="ml-2 text-xs text-muted">{h.commodity}</span></span> },
     { key: "asset_class", label: "Class", render: (h) => label(h.asset_class) },
     { key: "units", label: "Units", align: "right", render: (h) => Number(h.units).toLocaleString("de-CH", { maximumFractionDigits: 2 }) },
-    { key: "value", label: ccy, align: "right", render: (h) => money(h.value, ccy, 0) },
+    { key: "price", label: "Price", align: "right", render: (h) => (h.price ? money(h.price, h.currency, 2) : "–") },
+    { key: "native_value", label: "Value, own currency", align: "right", render: (h) => money(h.native_value, h.currency, 0) },
+    { key: "value", label: `Value, ${ccy}`, align: "right", render: (h) => money(h.value, ccy, 0) },
     {
       key: "unrealized",
       label: "Unrealized",

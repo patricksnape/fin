@@ -46,8 +46,8 @@ export interface FixedAssets {
   property_value: string; mortgage_balance: string; home_equity: string; loan_to_value: string | null;
 }
 export interface NetWorth { groups: string[]; rows: Array<Record<string, string>>; fixed: FixedAssets }
-export interface Holding { account: string; commodity: string; name: string; asset_class: string; currency: string; units: string; avg_cost: string | null; price: string | null; value: string; unrealized: string | null; weight: string }
-export interface AllocRow { asset_class?: string; currency?: string; value: string; weight: string; target?: string; drift?: string }
+export interface Holding { account: string; commodity: string; name: string; asset_class: string; currency: string; units: string; avg_cost: string | null; price: string | null; native_value: string; value: string; unrealized: string | null; weight: string }
+export interface AllocRow { asset_class?: string; currency?: string; native_value?: string; value: string; weight: string; target?: string; drift?: string }
 export interface Allocation { holdings: Holding[]; by_asset_class: AllocRow[]; by_currency: AllocRow[]; employer: { commodity: string; weight: string } | null }
 export interface Tile { title: string; option?: any; error?: string }
 
