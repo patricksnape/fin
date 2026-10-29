@@ -166,6 +166,53 @@ def apply(root: Path, edits: dict[str, dict], message: str | None = None) -> int
         return n
 
 
+def add_meta(root: Path, additions: dict[str, dict[str, str]], message: str) -> int:
+    """Add text meta lines to transactions by ref, keeping what is there (a key already present is
+    left alone), in one commit. All of it or none. Returns the number of transactions changed."""
+    from fin import config, ledger
+
+    with gitops.write_lock(root):
+        led = ledger.load(config.main_ledger(root))
+        where: dict[str, tuple[str, int]] = {}
+        for e in led.entries:
+            ref = (e.meta or {}).get("ref") if isinstance(e, data.Transaction) else None
+            if additions.get(ref):
+                where[ref] = (e.meta["filename"], e.meta["lineno"])
+        missing = [r for r, add in additions.items() if add and r not in where]
+        if missing:
+            raise KeyError(f"no transaction for {', '.join(sorted(missing)[:3])}")
+        by_file: dict[str, list[tuple[int, str]]] = {}
+        for ref, (path, lineno) in where.items():
+            by_file.setdefault(path, []).append((lineno - 1, ref))
+        before = {p: Path(p).read_text() for p in by_file}
+        changed = 0
+        try:
+            for path, items in by_file.items():
+                lines = before[path].split("\n")
+                for start, ref in sorted(items, reverse=True):
+                    end = _block_end(lines, start)
+                    block = lines[start:end]
+                    have = {m.group(1) for ln in block if (m := re.match(r"^  ([a-z_]+):", ln))}
+                    spot = next(i for i, ln in enumerate(block) if _POSTING.match(ln))
+                    new = [f'  {k}: "{v}"' for k, v in additions[ref].items() if k not in have]
+                    if new:
+                        lines[start:end] = [*block[:spot], *new, *block[spot:]]
+                        changed += 1
+                Path(path).write_text("\n".join(lines))
+            errors = ledger.load(config.main_ledger(root)).errors
+            if errors:
+                raise ValueError(
+                    "ledger would have errors: " + "; ".join(ledger.format_errors(errors)[:3])
+                )
+        except BaseException:
+            for path, text in before.items():
+                Path(path).write_text(text)
+            raise
+        if changed:
+            gitops.commit_all(root, message)
+        return changed
+
+
 # ---- rules: remember a payee's labels so later imports get them -------------------------------
 
 RULES_FILE = "ledger/manual/rules.beancount"

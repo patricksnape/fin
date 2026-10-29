@@ -431,3 +431,14 @@ def test_a_rule_with_an_income_category_fills_an_uncategorized_credit(data):
         for p in e.postings
     )
     assert labels.apply_rules(data) == 0
+
+
+def test_add_meta_adds_lines_once_and_commits(root, client):
+    ref = txn(client, kind="expense")[0]["ref"]
+    n = labels.add_meta(root, {ref: {"award_date": "2023-03-20"}}, "meta: test")
+    assert n == 1 and '  award_date: "2023-03-20"' in block(root, ref)
+    assert git(root, "log", "-1", "--format=%s").strip() == "meta: test"
+    assert labels.add_meta(root, {ref: {"award_date": "2020-01-01"}}, "meta: again") == 0  # already there
+    assert '2020-01-01' not in block(root, ref)
+    with pytest.raises(KeyError):
+        labels.add_meta(root, {"nope:1": {"award_date": "2023-03-20"}}, "meta: none")

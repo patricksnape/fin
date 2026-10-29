@@ -356,6 +356,28 @@ def rules_forget(payee: Annotated[str, typer.Argument(help='normalized payee, e.
     typer.echo(f"forgot {payee}")
 
 
+rsu_cmds = typer.Typer(help="Share awards: tidy what the importers recorded about vests.")
+app.add_typer(rsu_cmds, name="rsu")
+
+
+@rsu_cmds.command("backfill")
+def rsu_backfill():
+    """Give vests booked before the importer wrote it their award date and name (from the archived
+    Schwab files). Safe to run again: lines already there are left alone."""
+    from fin import labels
+    from fin.importers import schwab
+
+    root = _root()
+    found = schwab.award_meta(schwab.source_files(root))
+    try:
+        n = labels.add_meta(root, found, f"rsu: award dates for {len(found)} vests")
+    except KeyError as e:
+        raise _fail(
+            f"{e.args[0]}: a vest in the files is not in the ledger yet; run an import first"
+        )
+    typer.echo(f"{n} vest(s) updated, {len(found) - n} already had them")
+
+
 account_cmds = typer.Typer(
     help="Accounts: add, list, regroup and close. Written to the ledger as plain directives."
 )

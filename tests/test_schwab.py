@@ -270,3 +270,12 @@ def test_import_takes_a_downloaded_file(data, monkeypatch, tmp_path):
     assert (
         "not a Schwab export" in CliRunner().invoke(cli.app, ["import", "schwab", str(bad)]).output
     )
+
+
+def test_vest_records_the_award_date_and_name(tmp_path):
+    f = _archive(tmp_path, "eac", [_vest("02/15/2023", "111", 10, 4, "150.25")])
+    [t] = schwab.parse_files([f])
+    assert t.meta["award_date"] == "2020-01-01" and t.meta["award_name"] == "RSU"
+    assert schwab.award_meta([f]) == {
+        "schwab:vest:111:20230215": {"award_date": "2020-01-01", "award_name": "RSU"}
+    }

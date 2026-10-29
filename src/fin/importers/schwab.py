@@ -250,6 +250,30 @@ class _Lots:
         return [(s, lot) for s, lots in self.held.items() for lot in lots if lot["qty"] > 0]
 
 
+def _award_meta(detail: dict) -> dict[str, str]:
+    """When the award was granted and what it is called: the vest's own record carries both."""
+    out = {}
+    if detail.get("awardDate"):
+        out["award_date"] = _iso(detail["awardDate"])
+    if detail.get("awardName"):
+        out["award_name"] = str(detail["awardName"])
+    return out
+
+
+def award_meta(files: list[Path]) -> dict[str, dict[str, str]]:
+    """`{ref: {award_date, award_name}}` for every vest in the archived files, so vests booked before
+    the importer wrote these can be given them (`fin rsu backfill`)."""
+    out = {}
+    for row in _load(files, "eac"):
+        details = row.get("transactionDetails") or []
+        if row.get("typeName") != "LapseViewModel" or len(details) != 1:
+            continue
+        look = details[0].get("fieldNameToDisplayValueLookup") or {}
+        award = look.get("awardId") or "award"
+        out[f"{SOURCE}:vest:{award}:{_day(row['eventDate']):%Y%m%d}"] = _award_meta(details[0])
+    return out
+
+
 def _vest(row: dict, lots: _Lots) -> RawTxn:
     if row.get("typeName") != "LapseViewModel" or row.get("action") != "Lapse":
         raise ImportFailed(
@@ -280,7 +304,7 @@ def _vest(row: dict, lots: _Lots) -> RawTxn:
         f"{WITHHELD}  {withheld * fmv} USD",
         f"{INCOME}  {-gross * fmv} USD",
     ]
-    meta = {"award": str(award), "taxes": f"{_money(d.get('totalTaxes'))} USD"}
+    meta = {"award": str(award), "taxes": f"{_money(d.get('totalTaxes'))} USD", **_award_meta(d)}
     return RawTxn(day, holding(sym), net, commodity(sym), PAYEE, f"vest {gross} {sym} ({withheld} withheld for tax)",
                   f"{SOURCE}:vest:{award}:{day:%Y%m%d}", meta=meta, postings=legs, review=False)  # fmt: skip
 
