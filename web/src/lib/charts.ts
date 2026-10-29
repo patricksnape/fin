@@ -5,30 +5,36 @@ import { seriesColor } from "./chartTheme";
 
 export interface Part { account: string; label: string; amount: number; share: number }
 
-const MAX_STACK = 5;
-
 function colorFor(key: string, idx: number, mode: Mode, entitySlots: boolean): string {
   if (key === "Other") return TOKENS[mode].baseline;
   return seriesColor(mode, entitySlots && key in ENTITY_SLOT ? ENTITY_SLOT[key] : idx);
 }
 
-/** Keep the top keys (already sorted by total) and fold the tail into "Other". */
-export function foldTail(p: Pivot, keep = MAX_STACK): Pivot {
-  if (p.keys.length <= keep + 1) return p;
-  const top = p.keys.slice(0, keep);
-  const rest = p.keys.slice(keep);
-  const rows = p.rows.map((r) => {
-    const other = rest.reduce((s, k) => s + n(r[k]), 0);
-    return { ...r, Other: String(other) };
-  });
-  return { keys: [...top, "Other"], rows };
+export type Fold = "5" | "8" | "12" | "all" | "share";
+export const FOLD_LABEL: Record<Fold, string> = { "5": "Top 5", "8": "Top 8", "12": "Top 12", all: "All", share: "Above 3%" };
+
+/** Keep the biggest keys of the rows shown and fold the rest into "Other" (listed in `folded`). The order
+ *  is by what the rows add up to, not by the full history, so "Top 5" means the top five of this range. */
+export function foldTail(p: Pivot, rule: Fold = "5", minShare = 0.03): Pivot {
+  const total = (k: string) => p.rows.reduce((s, r) => s + Math.abs(n(r[k])), 0);
+  const totals = Object.fromEntries(p.keys.map((k) => [k, total(k)]));
+  const keys = [...p.keys].sort((a, b) => totals[b] - totals[a]);
+  const grand = keys.reduce((s, k) => s + totals[k], 0) || 1;
+  const keep = rule === "all" ? keys.length : rule === "share" ? keys.filter((k) => totals[k] / grand >= minShare).length : Number(rule);
+  const top = keys.slice(0, keep);
+  const rest = keys.slice(keep);
+  if (rest.length < 2) return { keys, rows: p.rows }; // a single leftover is not worth hiding
+  const rows = p.rows.map((r) => ({ ...r, Other: String(rest.reduce((s, k) => s + n(r[k]), 0)) }));
+  return { keys: [...top, "Other"], rows, folded: rest };
 }
 
 export function sliceMonths(p: Pivot, months: number): Pivot {
   return { ...p, rows: p.rows.slice(-months) };
 }
 
-export function stackedBars(p: Pivot, mode: Mode, entitySlots: boolean): any {
+/** `order` fixes each key's color by its place in that list (say the full-history order), so a category keeps
+ *  its color whichever range or fold is chosen. */
+export function stackedBars(p: Pivot, mode: Mode, entitySlots: boolean, order?: string[]): any {
   return {
     xAxis: { type: "category", data: p.rows.map((r) => monthLabel(r.month)) },
     yAxis: { type: "value", name: "CHF" },
@@ -36,7 +42,7 @@ export function stackedBars(p: Pivot, mode: Mode, entitySlots: boolean): any {
       name: k.replace("Expenses:", "").replace("_", "-"),
       type: "bar",
       stack: "total",
-      itemStyle: { color: colorFor(k, i, mode, entitySlots) },
+      itemStyle: { color: colorFor(k, order && order.includes(k) ? order.indexOf(k) : i, mode, entitySlots) },
       data: p.rows.map((r) => n(r[k])),
     })),
   };

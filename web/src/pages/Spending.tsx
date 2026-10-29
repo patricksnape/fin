@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { Alert, Pivot, Series, Spending as SpendingData, useApi } from "../lib/api";
 import { dateLabel, money, monthLabel, n, signedMoney } from "../lib/format";
-import { Part, breakdown, donut, foldTail, sliceMonths, stackedBars } from "../lib/charts";
+import { FOLD_LABEL, Fold, Part, breakdown, donut, foldTail, sliceMonths, stackedBars } from "../lib/charts";
 import { useMode } from "../lib/theme";
 import { go } from "../lib/route";
 import { ChartCard } from "../components/Chart";
@@ -23,6 +23,7 @@ export default function Spending({ ccy }: { ccy: string }) {
   const months = Number(range);
   const rangeText = year ?? `the last ${months} months`;
   const [group, setGroup] = useState<string | null>(null);
+  const [fold, setFold] = useState<Fold>("8");
   const [picked, setPicked] = useState<{ month: string; group: string } | null>(null);
   const { data, isFetching } = useApi<SpendingData>(`/api/spending?view=${view}&months=240`);
   const { data: flow } = useApi<{ rows: Array<Record<string, string>> }>("/api/cashflow?months=240");
@@ -30,7 +31,7 @@ export default function Spending({ ccy }: { ccy: string }) {
   const slice = (p: Pivot): Pivot => (year ? { ...p, rows: p.rows.filter((r) => r.month.startsWith(year)) } : sliceMonths(p, months));
   const cadence = useMemo(() => data && slice(data.by_cadence), [data, range]);
   const necessity = useMemo(() => data && slice(data.by_necessity), [data, range]);
-  const category = useMemo(() => data && foldTail(slice(data.by_category)), [data, range]);
+  const category = useMemo(() => data && foldTail(slice(data.by_category), fold), [data, range, fold]);
   const accounts = useMemo(() => data && slice(data.by_account), [data, range]);
   const years = useMemo(() => (data ? [...new Set(data.by_account.rows.map((r) => r.month.slice(0, 4)))].sort().reverse() : []), [data]);
   // major purchases and recurring payments follow the range shown, month for month
@@ -67,10 +68,14 @@ export default function Spending({ ccy }: { ccy: string }) {
   const partsTotal = parts.reduce((t, x) => t + x.amount, 0);
   const pickGroup = (e: { seriesIndex: number; dataIndex: number }) => {
     const key = category.keys[e.seriesIndex];
-    if (key && key !== "Other") setPicked({ month: category.rows[e.dataIndex].month, group: key });
+    if (key === "Other" && category.folded) open({ month: category.rows[e.dataIndex].month, category: category.folded.join(",") }); // exactly what was folded
+    else if (key) setPicked({ month: category.rows[e.dataIndex].month, group: key });
   };
   const monthParts = picked ? breakdown(data.by_account, picked.group, picked.month) : [];
   const monthTotal = monthParts.reduce((t, x) => t + x.amount, 0);
+  const sliced = slice(data.by_category);
+  const otherRows = (category.folded ?? []).map((k) => ({ key: k, amount: sliced.rows.reduce((t, r) => t + n(r[k]), 0) })).sort((a, b) => b.amount - a.amount);
+  const otherTotal = otherRows.reduce((t, r) => t + r.amount, 0);
   const partCols = (month?: string): Column<Part>[] => [
     { key: "label", label: "Category", render: (r) => <button onClick={() => open({ ...(month ? { month } : {}), category: r.account })} className="text-accent underline-offset-2 hover:underline">{r.label}</button> },
     { key: "amount", label: ccy, align: "right", render: (r) => money(r.amount, ccy, 0) },
@@ -115,9 +120,28 @@ export default function Spending({ ccy }: { ccy: string }) {
       </div>
       <ChartCard title="Spend by cadence" subtitle="Recurring payments, regular variable spend, and one-offs. Click a bar to see its transactions." onPick={pickFrom(cadence, "cadence")} loading={isFetching} option={stackedBars(cadence, mode, true)} columns={monthCols(cadence.keys)} rows={cadence.rows} />
       <div className="grid gap-6 xl:grid-cols-2">
-        <ChartCard title="Spend by category" subtitle="Top five, the rest folded into Other. Click a bar to break that month down by sub-category." onPick={pickGroup} loading={isFetching} option={stackedBars(category, mode, false)} columns={monthCols(category.keys)} rows={category.rows} />
+        <ChartCard
+          title="Spend by category"
+          subtitle="Click a bar to break that month down. Click Other to see the transactions in it."
+          right={<Segmented<Fold> label="Categories shown" value={fold} onChange={setFold} options={(Object.keys(FOLD_LABEL) as Fold[]).map((v) => ({ value: v, label: FOLD_LABEL[v] }))} />}
+          onPick={pickGroup} loading={isFetching} option={stackedBars(category, mode, false, data.by_category.keys)} columns={monthCols(category.keys)} rows={category.rows}
+        />
         <ChartCard title="Essential vs discretionary" onPick={pickFrom(necessity, "necessity")} loading={isFetching} option={stackedBars(necessity, mode, true)} columns={monthCols(necessity.keys)} rows={necessity.rows} />
       </div>
+      {category.folded && (
+        <Card>
+          <CardHeader title="What is in Other" subtitle={`${category.folded.length} smaller categories, ${money(otherTotal, ccy, 0)} over ${rangeText}. Click one to see its transactions.`} />
+          <DataTable
+            columns={[
+              { key: "label", label: "Category", render: (r) => <button onClick={() => open({ category: r.key })} className="text-accent underline-offset-2 hover:underline">{r.key.replace("Expenses:", "")}</button> },
+              { key: "amount", label: ccy, align: "right", render: (r) => money(r.amount, ccy, 0) },
+              { key: "share", label: "Share of Other", align: "right", render: (r) => `${Math.round((r.amount / (otherTotal || 1)) * 100)}%` },
+            ]}
+            rows={otherRows}
+          />
+          <button onClick={() => open({ category: category.folded!.join(",") })} className="mt-3 text-sm text-accent underline-offset-2 hover:underline">Show all of them in Transactions</button>
+        </Card>
+      )}
       {picked && (
         <ChartCard
           title={`${picked.group.replace("Expenses:", "")} in ${monthLabel(picked.month)}`}

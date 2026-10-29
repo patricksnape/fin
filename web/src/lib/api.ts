@@ -20,7 +20,7 @@ export function useApi<T>(path: string) {
 }
 
 export interface Meta { empty: boolean; data_dir: string; base_currency: string; as_of?: string; first_date?: string; privacy_level: string; chat: boolean }
-export interface Pivot { keys: string[]; rows: Array<Record<string, string>> }
+export interface Pivot { keys: string[]; rows: Array<Record<string, string>>; folded?: string[] /* the keys inside "Other" */ }
 export interface Series {
   id: string; payee: string; account: string; period: string; typical_amount: string;
   first_date: string; last_date: string; next_expected: string; status: "active" | "lapsed" | "proposed"; confirmed: boolean; occurrences: number;
