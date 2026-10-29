@@ -56,7 +56,7 @@ def test_kinds_are_what_a_person_would_call_them(table):
     assert (
         buy["kind"] == "investment" and buy["category"] == "VT" and buy["amount"] > 1000
     )  # not the CHF 0.88 fee
-    for what in ("RSU vest", "ESPP purchase", "VT dividend"):
+    for what in ("vest 40 ACME", "ESPP purchase", "VT dividend"):
         assert row(table, what)["kind"] == "income", what
     assert row(table, "Sale of")["kind"] == "investment"
     assert set(table["kind"]) == {"expense", "income", "transfer", "investment", "asset", "opening"}
@@ -116,7 +116,7 @@ def test_api_defaults_to_the_latest_month(client):
     assert {x["date"][:7] for x in r["rows"]} == {"2026-10"}
     assert [m["month"] for m in r["months"]][:2] == ["2024-10", "2024-11"] and sum(
         m["count"] for m in r["months"]
-    ) == 904
+    ) == 896
     dates = [x["date"] for x in r["rows"]]
     assert dates == sorted(dates, reverse=True)
 
@@ -147,7 +147,7 @@ def test_api_filters(client):
     cat = client.get("/api/transactions?month=all&category=Expenses:Food:Groceries").json()
     assert cat["matching"] > 100
     capped = client.get("/api/transactions?month=all&limit=5").json()
-    assert len(capped["rows"]) == 5 and capped["truncated"] and capped["matching"] == 904
+    assert len(capped["rows"]) == 5 and capped["truncated"] and capped["matching"] == 896
 
 
 def test_api_rejects_bad_input(client):

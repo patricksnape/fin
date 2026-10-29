@@ -83,7 +83,13 @@ commit    git commit in fin-data
   withholding as an expense. Splits are automated; other corporate actions stop the import for a
   manual fix.
 - **Equity awards:** a vest books the gross shares at the vest-day price as income, the shares
-  withheld for tax as tax.
+  withheld for tax as tax. The vest's meta carries `award`, `award_date` (when it was granted) and
+  `award_name`; an ESPP purchase carries `offering_start`. The Share awards page finds events by this
+  shape (a stock lot at its market price plus a posting to `Income:Employer:RSU*` or
+  `Income:Employer:ESPP*`), never by ticker, so any importer that books it this way is picked up.
+  Sales close lots by their cost date and price, which survive a move between brokers. Prices on
+  award dates come from a daily history file in the data repo (`sources/market-history/<SYMBOL>.csv`)
+  or the ledger's own prices; without one the growth before the vest is left out, not guessed.
 
 ## Categorization and spend
 - Uncategorized postings go to `Expenses:Uncategorized` / `Income:Uncategorized`, tagged
