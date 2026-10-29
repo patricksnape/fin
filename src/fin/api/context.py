@@ -32,6 +32,8 @@ class Context:
                 raise ledger.EmptyLedger("the ledger has no transactions yet")
             settings = config.load_settings(self.root, led)
             confirmed, rejected = recurring.load_state(led)
-            self._data = engine.Data(led, settings, spend.build(led, settings, confirmed, rejected))
+            self._data = engine.Data(
+                led, settings, spend.build(led, settings, confirmed, rejected), root=self.root
+            )
             self._key = key
         return self._data

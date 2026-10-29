@@ -168,6 +168,7 @@ def test_empty_ledger_is_reported_not_crashed(tmp_path):
         "/api/allocation",
         "/api/cashflow",
         "/api/dashboards",
+        "/api/rsu",
     ):
         r = c.get(path)
         assert r.status_code == 409 and r.json()["empty"] is True, path
@@ -326,3 +327,23 @@ def test_transactions_can_be_limited_to_a_run_of_months(tmp_path):
         got = {str(t["date"])[:7] for t in out["rows"]}
         assert got and got <= {m for m in months if lo <= m <= hi}
         assert c.get("/api/transactions", params={"start": "2026-13"}).status_code == 400
+
+
+def test_share_awards_endpoint_and_the_growth_split_adds_up(client):
+    out = client.get("/api/rsu").json()
+    assert out["ready"] and out["base"] == "CHF"
+    s = out["series"][0]
+    assert s["commodity"] and s["events"] and s["summary"]["events"] == len(s["events"])
+    for a in client.get("/api/trends").json()["annual"]:
+        parts = sum(
+            Decimal(a[k])
+            for k in (
+                "from_cash_saving",
+                "from_share_comp",
+                "from_employer_stock",
+                "from_other_markets",
+            )
+        )
+        assert abs(
+            parts - Decimal(a["from_saving"]) - Decimal(a["from_markets_and_revaluation"])
+        ) < Decimal("0.05")

@@ -654,6 +654,12 @@ def create_app(root: Path | None = None, backend=None) -> FastAPI:
             }
         )
 
+    @app.get("/api/rsu")
+    def share_awards():
+        """Vests and share purchases of employer stock: what each cost, what it did since, the growth
+        from award to vest and held against sold. Grouped by stock and program (RSU or ESPP)."""
+        return ok(ctx.data().rsu)
+
     @app.get("/api/trends")
     def trends_report():
         d = ctx.data()

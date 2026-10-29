@@ -7,8 +7,9 @@ from decimal import Decimal
 
 import pandas as pd
 
+from fin import ledger
 from fin.agent import spec as S
-from fin.analytics import allocation, cashflow, networth, spend, transactions
+from fin.analytics import allocation, cashflow, networth, rsu, spend, transactions
 
 PCT = Decimal("0.0001")
 MONEY = Decimal("0.01")
@@ -32,10 +33,11 @@ class Result:
 class Data:
     """Everything the engine reads, loaded once per session."""
 
-    def __init__(self, led, settings, model):
-        self.led, self.settings, self.model = led, settings, model
+    def __init__(self, led, settings, model, root=None):
+        self.led, self.settings, self.model, self.root = led, settings, model, root
         self._cashflow = None
         self._transactions = None
+        self._rsu = None
 
     @property
     def transactions(self) -> pd.DataFrame:
@@ -44,6 +46,18 @@ class Data:
                 self.led, self.model, self.settings.base_currency
             )
         return self._transactions
+
+    @property
+    def rsu(self) -> dict:
+        """Share awards (vests, purchases, their results), worked out once per loaded ledger."""
+        if self._rsu is None:
+            self._rsu = rsu.report(
+                self.led.entries,
+                self.root,
+                ledger.valuation_date(self.led),
+                self.settings.base_currency,
+            )
+        return self._rsu
 
     @property
     def cashflow(self) -> pd.DataFrame:

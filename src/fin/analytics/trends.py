@@ -9,8 +9,9 @@ from decimal import Decimal
 
 import pandas as pd
 
+from fin import ledger
 from fin.agent import engine
-from fin.analytics import networth, spend
+from fin.analytics import networth, rsu, spend
 
 CENT = Decimal("0.01")
 PCT = Decimal("0.0001")
@@ -44,6 +45,10 @@ def annual(data: engine.Data) -> pd.DataFrame:
     own revaluations did."""
     cf = data.cashflow.copy()
     cf["year"] = [m.year for m in cf["month"]]
+    effect = rsu.yearly_effect(
+        data.led.entries, data.root, sorted({m.year for m in cf["month"]}),
+        ledger.valuation_date(data.led), data.settings.base_currency,
+    )  # fmt: skip
     lcm = complete_through(data)
     totals = net_worth_totals(data)
     rows, previous = [], totals.iloc[0]
@@ -53,6 +58,13 @@ def annual(data: engine.Data) -> pd.DataFrame:
         year_end = totals[[d for d in totals.index if d.year == year]].iloc[-1]
         change = year_end - previous
         spend_done = sum((v for v in done["spend"]), Decimal(0))
+        # the growth in four parts that add up to saved + markets: cash saving (without share
+        # compensation and without gains already made on sales), share compensation (vests net of the
+        # shares kept for tax), what the market and exchange rate did to employer shares, and the rest
+        comp = sum((v for v in g["equity_comp"]), Decimal(0)) - sum(
+            (v for v in g["rsu_withholding"]), Decimal(0)
+        )
+        market = (change - sums["net"]) + sums["realized_gains"]
         rows.append(
             {
                 "year": int(year),
@@ -65,6 +77,10 @@ def annual(data: engine.Data) -> pd.DataFrame:
                 "net_worth_change": _q(change),
                 "from_saving": _q(sums["net"]),
                 "from_markets_and_revaluation": _q(change - sums["net"]),
+                "from_cash_saving": _q(sums["net"] - comp - sums["realized_gains"]),
+                "from_share_comp": _q(comp),
+                "from_employer_stock": _q(effect.get(int(year), Decimal(0))),
+                "from_other_markets": _q(market - effect.get(int(year), Decimal(0))),
             }
         )
         previous = year_end

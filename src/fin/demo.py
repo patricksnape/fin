@@ -153,11 +153,13 @@ class Txn:
     postings: list[Posting]
     tags: tuple[str, ...] = ()
     ref: str = field(default="")
+    meta: tuple[tuple[str, str], ...] = ()
 
     def render(self) -> str:
         tags = "".join(f" #{t}" for t in self.tags)
         head = f'{self.date} * "{self.payee}" "{self.narration}"{tags}'
-        lines = [head, f'  ref: "{self.ref}"'] + [p.render() for p in self.postings]
+        extra = [f'  {k}: "{v}"' for k, v in self.meta]
+        lines = [head, f'  ref: "{self.ref}"', *extra] + [p.render() for p in self.postings]
         return "\n".join(lines)
 
 
@@ -203,9 +205,11 @@ class Generator:
     def px(self, sym: str, d: date) -> Decimal:
         return self.prices[(d.year, d.month)][sym]
 
-    def add(self, d, source, payee, narration, postings, tags=()):
+    def add(self, d, source, payee, narration, postings, tags=(), meta=()):
         if START <= d <= END or (source == "opening" and d == OPENING):
-            self.txns.append(Txn(d, source, payee, narration, postings, tuple(tags)))
+            self.txns.append(
+                Txn(d, source, payee, narration, postings, tuple(tags), meta=tuple(meta))
+            )
 
     def day(self, month: date, lo=1, hi=28) -> date:
         return month.replace(day=self.rng.randint(lo, hi))
@@ -609,25 +613,22 @@ class Generator:
         for d in vests:
             fmv = self.px("ACME", d)
             self.vest_lots[d] = fmv
+            granted = date(d.year - 1, 11, 15) if d.month >= 11 else date(d.year - 1, 5, 15)
             self.add(
                 d,
                 "schwab",
                 "Acme Corp",
-                "RSU vest",
+                "vest 40 ACME (14 withheld for tax)",
                 [
-                    P("Assets:Schwab:ACME", 40, "ACME", f"{{{fmv} USD, {d}}}"),
+                    P("Assets:Schwab:ACME", 26, "ACME", f"{{{fmv} USD, {d}}}"),
+                    P("Expenses:Taxes:RSU-Withholding", 14 * fmv, "USD"),
                     P("Income:Employer:RSU", -(40 * fmv), "USD"),
                 ],
-            )
-            self.add(
-                d,
-                "schwab",
-                "Acme Corp",
-                "Shares withheld for tax",
-                [
-                    P("Assets:Schwab:ACME", -14, "ACME", f"{{{fmv} USD, {d}}} @ {fmv} USD"),
-                    P("Expenses:Taxes:RSU-Withholding", 14 * fmv, "USD"),
-                ],
+                meta=(
+                    ("award", f"A{granted:%Y%m}"),
+                    ("award_date", granted.isoformat()),
+                    ("award_name", "RSU"),
+                ),
             )
         accrued = D(0)
         payslips = sorted(t.date for t in self.txns if t.source == "payslip")
@@ -656,6 +657,7 @@ class Generator:
                         f"@@ {q(cost_usd)} USD",
                     ),
                 ],
+                meta=(("offering_start", (pd - timedelta(days=182)).isoformat()),),
             )
             leftover = accrued - used
             self.add(
@@ -815,11 +817,27 @@ class Generator:
         ]
         return "\n".join(out) + "\n"
 
+    def write_price_history(self, root: Path):
+        """A daily-close file for the employer stock back before the ledger's own quotes begin, so the
+        demo's awards (granted a year before they vest) have a price on their award date."""
+        first = self.prices[(START.year, START.month)][EMPLOYER_STOCK]
+        rows = ["Date,Open,High,Low,Close,Volume"]
+        day = date(2023, 1, 1)
+        while day < START:
+            months_before = (START.year - day.year) * 12 + START.month - day.month
+            close = q(first * (D(1) - D("0.02") * months_before))
+            rows.append(f"{day},{close},{close},{close},{close},1000")
+            day += timedelta(days=1)
+        folder = root / "sources" / "market-history"
+        folder.mkdir(parents=True, exist_ok=True)
+        (folder / f"{EMPLOYER_STOCK}.csv").write_text("\n".join(rows) + "\n")
+
     def write(self, root: Path):
         ledger = root / "ledger"
         (ledger / "accounts.beancount").write_text(self.accounts_text())
         (ledger / "commodities.beancount").write_text(self.commodities_text())
         (ledger / "prices.beancount").write_text(self.prices_text())
+        self.write_price_history(root)
         groups: dict[Path, list[Txn]] = defaultdict(list)
         for t in self.txns:
             if t.source == "opening":

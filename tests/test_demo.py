@@ -81,5 +81,6 @@ def test_ubs_never_negative(demo_root):
 def test_scenarios_present(demo_root):
     _, txns = _txns(demo_root)
     narrations = {t.narration for t in txns}
-    assert {"Car purchase", "Laptop", "Refund", "RSU vest", "ESPP purchase"} <= narrations
+    assert {"Car purchase", "Laptop", "Refund", "ESPP purchase"} <= narrations
+    assert any(n.startswith("vest ") for n in narrations)
     assert sum(1 for t in txns if "review" in (t.tags or ())) == 10
