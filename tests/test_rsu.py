@@ -141,3 +141,20 @@ def test_the_yearly_market_effect_matches_the_closed_form(entries):
     sold = D(2) * D(200) * D("0.90")
     assert out[2023] == (end_2023 - arrived + sold).quantize(D("0.01"))
     assert out[2024] == (D(14) * D(210) * D("0.85") - end_2023).quantize(D("0.01"))
+
+
+def test_an_award_can_be_priced_at_the_previous_close(entries, tmp_path):
+    (tmp_path / "rules").mkdir()
+    (tmp_path / "rules" / "rsu.yaml").write_text("ACME:\n  award_price: previous_close\n")
+    d = tmp_path / "sources" / "market-history"
+    d.mkdir(parents=True)
+    (d / "ACME.csv").write_text(
+        "Date,Open,High,Low,Close,Volume\n2022-09-29,1,1,1,95,1\n2022-09-30,1,1,1,100,1\n2022-10-03,1,1,1,110,1\n"
+    )
+    text = LEDGER.replace('award_date: "2022-10-01"', 'award_date: "2022-10-03"')
+    ents, _, _ = loader.load_string(text)
+    got = next(x for x in rsu.report(ents, tmp_path, AS_OF)["series"] if x["program"] == "rsu")
+    assert got["events"][0]["start_price"] == D(100)  # not the 110 of the award day itself
+    (tmp_path / "rules" / "rsu.yaml").unlink()
+    got = next(x for x in rsu.report(ents, tmp_path, AS_OF)["series"] if x["program"] == "rsu")
+    assert got["events"][0]["start_price"] == D(110)

@@ -217,7 +217,7 @@ export default function Rsu({ ccy }: { ccy: string }) {
           <li>Cost is the market price on the day the shares arrived. Shares kept back for tax are not counted as received; their value was income and tax at the vest.</li>
           <li>Realised results are after broker fees. Francs are converted at the rate on the day of the vest and of each sale, so the exchange-rate part is shown apart from the price part.</li>
           <li>Unrealised results use the latest price, and the rate today against the rate at the vest.</li>
-          <li>The price on an award date is the closing price on or just before it, a stand-in for the grant value; it is left out when no price is near that date.</li>
+          <li>The price on an award date is a closing price near it, a stand-in for the grant value (set per stock in the data repo's rules/rsu.yaml: on the day, or the day before, which is how the vest prices of this plan are defined); it is left out when no price is near that date.</li>
           <li>Sales are matched to a vest by the shares' cost date and price, which survive a move between brokers; vests on one day at one price are treated alike.</li>
         </ul>
       </Card>

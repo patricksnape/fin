@@ -26,6 +26,7 @@ from datetime import date, timedelta
 from decimal import Decimal
 from pathlib import Path
 
+import yaml
 from beancount.core import data
 from beancount.core import prices as bprices
 from beancount.core.amount import Amount
@@ -39,6 +40,14 @@ PROGRAMS = (("Income:Employer:RSU", "rsu"), ("Income:Employer:ESPP", "espp"))
 WITHHELD = "Expenses:Taxes:RSU-Withholding"
 FEES = "Expenses:Fees:Broker"
 EXACT_WITHIN = timedelta(days=7)  # a quote this close to a date stands for it
+
+
+def settings(root: Path | None) -> dict:
+    """`rules/rsu.yaml` in the data repo, per symbol: `award_price: previous_close` prices an award at
+    the last close *before* its date, the way some plans (and the vests of one checked here, to the cent)
+    define a share's fair market value; the default is the close on or before the date."""
+    path = root / "rules" / "rsu.yaml" if root else None
+    return (yaml.safe_load(path.read_text()) or {}) if path and path.exists() else {}
 
 
 def _q(v: Decimal | None) -> Decimal | None:
@@ -164,6 +173,7 @@ class Prices:
 
     def __init__(self, entries: list, root: Path | None, evs: list[Event], market: Market):
         self.market, self.root = market, root
+        self.conf = settings(root)
         self.history: dict[str, tuple[list[date], list[Decimal]]] = {}
         self.points: dict[str, list[tuple[date, Decimal]]] = defaultdict(list)
         for v in evs:
@@ -198,6 +208,13 @@ class Prices:
         if price is not None and quoted and d - quoted <= EXACT_WITHIN:
             return price
         return None
+
+    def award(self, sym: str, d: date) -> Decimal | None:
+        """The price an award is measured from: the close on its date, or (when the plan's fair market
+        value is the previous close) the last close before it."""
+        if (self.conf.get(sym) or {}).get("award_price") == "previous_close":
+            return self.exact(sym, d - timedelta(days=1))
+        return self.exact(sym, d)
 
     def approx(self, sym: str, d: date) -> Decimal | None:
         v = self.exact(sym, d)
@@ -281,7 +298,7 @@ def _series(sym, program, mine, all_events, sold, held, px: Prices, as_of, base)
             unreal_usd = left * (now - v.fmv)
             unreal_chf = left * now * fx_now - left * v.fmv * fx_v
             unreal_fx = left * now * (fx_now - fx_v)
-        start_px = px.exact(sym, v.start) if v.start else None
+        start_px = px.award(sym, v.start) if v.start else None
         grow = {}
         if start_px:
             grow = {
