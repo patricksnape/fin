@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { AccountsData, Txn, TxnKind, TxnResponse, useApi } from "../lib/api";
 import { dateLabel, int, money, n } from "../lib/format";
 
@@ -84,6 +84,7 @@ function Detail({ t, ccy }: { t: Txn; ccy: string }) {
 /** Links carry a selection: #transactions?month=2026-03&category=Expenses:Food&kind=expense */
 export interface Initial { q?: string; start?: string; end?: string; tag?: string; account?: string; month?: string; category?: string; kind?: string; cadence?: string; necessity?: string }
 
+type SortKey = "date" | "description" | "category" | "amount";
 const KINDS = ["expense", "income", "transfer", "investment", "asset"];
 const NAMES: Record<string, string> = { one_off: "one-off" };
 
@@ -127,6 +128,20 @@ export default function Transactions({ ccy, initial = {} }: { ccy: string; initi
   if (review) params.set("review", "true");
   if (card) params.set("card", card);
   const { data, isFetching } = useApi<TxnResponse>(`/api/transactions?${params}`);
+  // click a column header to sort by it; click again to flip the direction
+  const [sort, setSort] = useState<{ key: SortKey; asc: boolean } | null>(null);
+  const shown = useMemo(() => {
+    const rows = data?.rows ?? [];
+    if (!sort) return rows;
+    const value = (t: TxnResponse["rows"][number]): string | number =>
+      sort.key === "date" ? t.date : sort.key === "amount" ? n(t.amount) : sort.key === "category" ? (t.category ?? "").toLowerCase() : (t.payee || t.narration || "").toLowerCase();
+    return [...rows].sort((a, b) => {
+      const x = value(a), y = value(b);
+      return (x < y ? -1 : x > y ? 1 : 0) * (sort.asc ? 1 : -1);
+    });
+  }, [data, sort]);
+  const sortBy = (key: SortKey) => setSort(sort?.key === key ? { key, asc: !sort.asc } : { key, asc: true });
+  const arrow = (key: SortKey) => (sort?.key === key ? (sort.asc ? " ▲" : " ▼") : "");
   const accountList = useApi<AccountsData>("/api/accounts").data;
   if (!data) return <Loading what="Loading transactions" />;
 
@@ -325,15 +340,15 @@ export default function Transactions({ ccy, initial = {} }: { ccy: string; initi
               <thead>
                 <tr className="border-b border-hairline text-left text-xs text-muted">
                   <th className="w-8 py-2 pl-2 sm:pl-4"><input type="checkbox" checked={allPicked} onChange={() => setPicked(allPicked ? new Set() : new Set(refs))} aria-label="Select all shown" /></th>
-                  <th className="px-2 py-2 font-medium">Date</th>
-                  <th className="px-2 py-2 font-medium">Description</th>
-                  <th className="hidden px-2 py-2 font-medium sm:table-cell">Category</th>
+                  <th className="px-2 py-2 font-medium" aria-sort={sort?.key === "date" ? (sort.asc ? "ascending" : "descending") : "none"}><button onClick={() => sortBy("date")} className="hover:text-ink">Date{arrow("date")}</button></th>
+                  <th className="px-2 py-2 font-medium" aria-sort={sort?.key === "description" ? (sort.asc ? "ascending" : "descending") : "none"}><button onClick={() => sortBy("description")} className="hover:text-ink">Description{arrow("description")}</button></th>
+                  <th className="hidden px-2 py-2 font-medium sm:table-cell" aria-sort={sort?.key === "category" ? (sort.asc ? "ascending" : "descending") : "none"}><button onClick={() => sortBy("category")} className="hover:text-ink">Category{arrow("category")}</button></th>
                   <th className="hidden px-2 py-2 font-medium sm:table-cell">Flags</th>
-                  <th className="px-4 py-2 text-right font-medium">{ccy}</th>
+                  <th className="px-4 py-2 text-right font-medium" aria-sort={sort?.key === "amount" ? (sort.asc ? "ascending" : "descending") : "none"}><button onClick={() => sortBy("amount")} className="hover:text-ink">{ccy}{arrow("amount")}</button></th>
                 </tr>
               </thead>
               <tbody>
-                {data.rows.map((t, i) => {
+                {shown.map((t, i) => {
                   const key = `${t.ref}-${i}`;
                   const expanded = open === key;
                   return (
