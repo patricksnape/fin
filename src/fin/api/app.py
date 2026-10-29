@@ -236,6 +236,8 @@ def create_app(root: Path | None = None, backend=None) -> FastAPI:
             {
                 "view": view,
                 "headline": spend.headline(m),
+                "monthly_headline": spend.monthly_headline(m, view),
+                "partial_month": m.as_of.strftime("%Y-%m"),
                 "by_cadence": _pivot(spend.spend_by(m, "cadence", view), months),
                 "by_necessity": _pivot(spend.spend_by(m, "necessity", view), months),
                 "by_category": _pivot(spend.spend_by(m, "category", view), months),

@@ -43,6 +43,12 @@ export default function Spending({ ccy }: { ccy: string }) {
     const sum = (k: string) => rows.reduce((t, r) => t + n(r[k]), 0);
     return { in: sum("income"), earnings: sum("salary"), spend: sum("spend"), major: sum("major"), taxes: sum("taxes") + sum("payroll_deductions"), out: sum("expenses") };
   }, [flow, from, to]);
+  // the headline averages are over the months shown, complete months only
+  const average = useMemo(() => {
+    const rows = (data?.monthly_headline ?? []).filter((r) => r.month !== data?.partial_month && (!from || r.month >= from) && (!to || r.month <= to));
+    const avg = (k: "core" | "essential" | "discretionary") => (rows.length ? rows.reduce((t, r) => t + n(r[k]), 0) / rows.length : 0);
+    return { core: avg("core"), essential: avg("essential"), discretionary: avg("discretionary"), months: rows.length };
+  }, [data, from, to]);
   const recurring = useMemo(() => (data ? data.recurring.filter((r) => (!from || r.last_date.slice(0, 7) >= from) && (!to || r.first_date.slice(0, 7) <= to)) : []), [data, from, to]);
   const major = useMemo(() => (data ? data.major.filter((r) => inRange(r.date)) : []), [data, from, to]);
   if (!data || !cadence || !necessity || !category || !accounts) return <p className="text-sm text-muted">Loading…</p>;
@@ -101,9 +107,9 @@ export default function Spending({ ccy }: { ccy: string }) {
         <Card><StatTile label="Total earnings" value={money(totals.earnings, ccy, 0)} hint={`salary and bonus, ${rangeText}`} /></Card>
         <Card><StatTile label="Total spend" value={money(totals.spend + totals.major, ccy, 0)} hint={`with major purchases, ${rangeText}`} /></Card>
         <Card><StatTile label="Spend without major purchases" value={money(totals.spend, ccy, 0)} hint={`${money(totals.major, ccy, 0)} major, ${rangeText}`} /></Card>
-        <Card><StatTile label="Core monthly spend" value={money(h.core_monthly_spend, ccy, 0)} hint="last 3 full months, average" /></Card>
-        <Card><StatTile label="Essential baseline" value={money(h.essential_baseline, ccy, 0)} hint="minimum monthly need" /></Card>
-        <Card><StatTile label="Discretionary" value={money(h.discretionary, ccy, 0)} hint="average per month" /></Card>
+        <Card><StatTile label="Core monthly spend" value={money(average.core, ccy, 0)} hint={`average per month, ${average.months} full months`} /></Card>
+        <Card><StatTile label="Essential baseline" value={money(average.essential, ccy, 0)} hint="minimum monthly need, average" /></Card>
+        <Card><StatTile label="Discretionary" value={money(average.discretionary, ccy, 0)} hint="average per month" /></Card>
         <Card><StatTile label="Major purchases this year" value={money(h.major_this_year, ccy, 0)} hint="not in monthly spend" /></Card>
       </div>
       <ChartCard title="Spend by cadence" subtitle="Recurring payments, regular variable spend, and one-offs. Click a bar to see its transactions." onPick={pickFrom(cadence, "cadence")} loading={isFetching} option={stackedBars(cadence, mode, true)} columns={monthCols(cadence.keys)} rows={cadence.rows} />

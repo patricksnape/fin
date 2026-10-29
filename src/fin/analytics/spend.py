@@ -141,6 +141,25 @@ def major_purchases(model: SpendModel) -> pd.DataFrame:
     )
 
 
+def monthly_headline(model: SpendModel, view: str = "run_rate") -> list[dict]:
+    """Per month: the three headline spend figures, so any range can be averaged."""
+    rows = monthly_rows(model, view)
+    rows = rows[rows["in_spend"]]
+    ess_cad = rows["cadence"].isin(["recurring", "regular"])
+
+    def total(sel) -> pd.Series:
+        return rows[sel].groupby("month")["amount"].sum()
+
+    frame = pd.DataFrame(
+        {
+            "core": total(rows["amount"].notna()),
+            "essential": total((rows["necessity"] == "essential") & ess_cad),
+            "discretionary": total(rows["necessity"] == "discretionary"),
+        }
+    ).fillna(Decimal(0))
+    return [{"month": m.strftime("%Y-%m"), **r} for m, r in frame.sort_index().iterrows()]
+
+
 def headline(model: SpendModel) -> dict[str, Decimal]:
     """Average monthly figures over the last 3 complete months (run-rate view)."""
     last = month_start(model.as_of)

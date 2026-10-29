@@ -137,3 +137,11 @@ def test_an_account_can_say_its_large_payments_are_not_major(tmp_path):
     assert shop not in set(after["account"]) and len(after) < len(before)
     account_admin.set_account(root, shop, {"major": None})  # removing the setting restores it
     assert len(spend.major_purchases(model(root))) == len(before)
+
+
+def test_monthly_headline_averages_to_the_headline(m):
+    rows = {r["month"]: r for r in spend.monthly_headline(m)}
+    window = ["2026-07", "2026-08", "2026-09"]
+    assert (sum(rows[w]["core"] for w in window) / 3).quantize(Decimal("0.01")) == spend.headline(
+        m
+    )["core_monthly_spend"]

@@ -20,6 +20,7 @@ export interface Series {
 export interface Alert { kind: "new" | "price_change" | "lapsed"; series: string; payee: string; detail?: string; date?: string; old?: string; new?: string; last_date?: string; days_overdue?: number }
 export interface Spending {
   view: string; headline: Record<string, string>;
+  monthly_headline: Array<{ month: string; core: string; essential: string; discretionary: string }>; partial_month: string;
   by_cadence: Pivot; by_necessity: Pivot; by_category: Pivot; by_account: Pivot;
   major: Array<{ date: string; payee: string; narration: string; account: string; amount: string }>;
   recurring: Series[]; alerts: Alert[];
