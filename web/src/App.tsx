@@ -13,6 +13,7 @@ import Dashboards from "./pages/Dashboards";
 import NetWorth from "./pages/NetWorth";
 import Overview from "./pages/Overview";
 import Review from "./pages/Review";
+import Rsu from "./pages/Rsu";
 import Settings from "./pages/Settings";
 import Spending from "./pages/Spending";
 import Transactions from "./pages/Transactions";
@@ -26,6 +27,7 @@ const PAGES = [
   { id: "accounts", label: "Accounts" },
   { id: "trends", label: "Trends" },
   { id: "networth", label: "Net worth" },
+  { id: "rsu", label: "Share awards" },
   { id: "fire", label: "FIRE" },
   { id: "allocation", label: "Allocation" },
   { id: "dashboards", label: "Dashboards" },
@@ -112,6 +114,7 @@ export default function App() {
         {!empty && page === "accounts" && <Accounts ccy={ccy} account={route.params.get("account")} />}
         {!empty && page === "trends" && <Trends ccy={ccy} />}
         {!empty && page === "networth" && <NetWorth ccy={ccy} />}
+        {!empty && page === "rsu" && <Rsu ccy={ccy} />}
         {!empty && page === "fire" && <Fire ccy={ccy} />}
         {!empty && page === "allocation" && <Allocation ccy={ccy} />}
         {!empty && page === "dashboards" && <Dashboards />}

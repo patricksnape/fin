@@ -128,6 +128,7 @@ export interface AnnualRow {
   payroll_deductions: string; expenses: string; net: string; savings_rate: string | null;
   avg_monthly_spend: string | null; net_worth_end: string; net_worth_change: string; from_saving: string;
   from_markets_and_revaluation: string;
+  from_cash_saving: string; from_share_comp: string; from_employer_stock: string; from_other_markets: string;
 }
 export interface Trends {
   through: string; annual: AnnualRow[]; overlay: Record<string, Array<string | null>>;
@@ -173,3 +174,33 @@ export interface AccountLedger {
   account: string; info: Account | null; month: string; months: Array<{ month: string; count: number }>;
   balances: Record<string, string>; balance_before: Record<string, string>; matching: number; truncated: boolean; rows: LedgerRow[];
 }
+
+export interface ShareEvent {
+  ref: string; award: string; award_name: string | null; start: string | null; day: string; days_to_event: number | null;
+  gross: string; withheld: string; net: string; price: string; paid: string; discount: string | null;
+  sold: string; left: string; cost_usd: string; cost_chf: string;
+  realised_usd: string; realised_chf: string; realised_fx_chf: string;
+  unrealised_usd: string; unrealised_chf: string; unrealised_fx_chf: string;
+  sell_at_event_usd: string; sell_at_event_chf: string; actual_usd: string; actual_chf: string;
+  hold_all_usd: string | null; hold_all_chf: string | null; discount_usd: string;
+  start_price?: string; growth?: string; growth_chf?: string; gain_usd?: string; gain_chf?: string;
+}
+export interface ShareAward {
+  award: string; start: string | null; name: string | null; events: number; first: string; last: string;
+  gross: string; net: string; start_price: string | null; avg_price: string | null; growth: string | null;
+  gain_usd: string | null; gain_chf: string | null;
+}
+export interface ShareSummary {
+  events: number; gross: string; withheld: string; net: string; sold: string; left: string;
+  cost_usd: string; cost_chf: string; realised_usd: string; realised_chf: string; realised_fx_chf: string;
+  unrealised_usd: string; unrealised_chf: string; unrealised_fx_chf: string;
+  sell_at_event_usd: string; sell_at_event_chf: string; actual_usd: string; actual_chf: string;
+  hold_all_usd: string; hold_all_chf: string; discount_usd: string;
+  growth: string | null; growth_events: number; growth_gain_usd: string | null; growth_gain_chf: string | null;
+  missing_start_price: number; missing_start_date: number;
+}
+export interface ShareSeries {
+  commodity: string; program: "rsu" | "espp"; currency: string; price_now: string | null; price_history: "history" | "ledger";
+  events: ShareEvent[]; awards: ShareAward[]; summary: ShareSummary;
+}
+export type ShareAwards = { ready: false; reason: string } | { ready: true; as_of: string; base: string; series: ShareSeries[] };

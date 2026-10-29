@@ -37,10 +37,10 @@ export default function Trends({ ccy }: { ccy: string }) {
       byYear,
       savings: simpleBars(annual.map(label), annual.map((a) => n(a.savings_rate) * 100), mode, "%", "Savings rate"),
       growth: (() => {
-        const o = stackedBars({ keys: ["from_saving", "from_markets_and_revaluation"], rows: annual.map((a) => ({ month: String(a.year), from_saving: a.from_saving, from_markets_and_revaluation: a.from_markets_and_revaluation, total: "0" })) }, mode, false);
+        const keys = ["from_cash_saving", "from_share_comp", "from_employer_stock", "from_other_markets"] as const;
+        const o = stackedBars({ keys: [...keys], rows: annual.map((a) => ({ month: String(a.year), ...Object.fromEntries(keys.map((k) => [k, a[k]])), total: "0" })) }, mode, false);
         o.xAxis.data = annual.map(label);
-        o.series[0].name = "Saved";
-        o.series[1].name = "Markets and revaluation";
+        ["Cash saving", "Share compensation", "Employer stock moves", "Other markets and FX"].forEach((name, i) => (o.series[i].name = name));
         return o;
       })(),
       overlay: overlayChart(data.overlay, mode),
@@ -92,13 +92,13 @@ export default function Trends({ ccy }: { ccy: string }) {
       </div>
       <ChartCard
         title="Where net worth growth came from"
-        subtitle="Saved is income minus expenses; the rest is markets, FX and your own valuations of home and car"
+        subtitle="Cash saving is after all tax, including tax on vests. Share compensation is vests net of shares kept for tax. Employer stock moves are what the market and exchange rate did to those shares. The rest is other markets, FX, gains made on sales and your own valuations. Click a bar for that year."
         onPick={pickYear}
         loading={isFetching}
         option={charts.growth}
         height={300}
-        columns={[{ key: "month", label: "Year" }, { key: "s", label: "Saved", align: "right" }, { key: "m", label: "Markets and revaluation", align: "right" }, { key: "t", label: "Change", align: "right" }]}
-        rows={data.annual.map((a) => ({ month: label(a), s: money(a.from_saving, ccy, 0), m: money(a.from_markets_and_revaluation, ccy, 0), t: money(a.net_worth_change, ccy, 0) }))}
+        columns={[{ key: "month", label: "Year" }, { key: "c", label: "Cash saving", align: "right" }, { key: "s", label: "Share comp", align: "right" }, { key: "e", label: "Employer stock", align: "right" }, { key: "m", label: "Other markets", align: "right" }, { key: "t", label: "Change", align: "right" }]}
+        rows={data.annual.map((a) => ({ month: label(a), c: money(a.from_cash_saving, ccy, 0), s: money(a.from_share_comp, ccy, 0), e: money(a.from_employer_stock, ccy, 0), m: money(a.from_other_markets, ccy, 0), t: money(a.net_worth_change, ccy, 0) }))}
       />
       <ChartCard
         title="Spend by month, year over year"
