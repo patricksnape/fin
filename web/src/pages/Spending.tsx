@@ -41,7 +41,7 @@ export default function Spending({ ccy }: { ccy: string }) {
   const totals = useMemo(() => {
     const rows = (flow?.rows ?? []).filter((r) => (!from || r.month.slice(0, 7) >= from) && (!to || r.month.slice(0, 7) <= to));
     const sum = (k: string) => rows.reduce((t, r) => t + n(r[k]), 0);
-    return { earnings: sum("income"), spend: sum("spend"), major: sum("major") };
+    return { earnings: sum("income"), spend: sum("spend"), major: sum("major"), taxes: sum("taxes") + sum("payroll_deductions"), out: sum("expenses") };
   }, [flow, from, to]);
   const recurring = useMemo(() => (data ? data.recurring.filter((r) => (!from || r.last_date.slice(0, 7) >= from) && (!to || r.first_date.slice(0, 7) <= to)) : []), [data, from, to]);
   const major = useMemo(() => (data ? data.major.filter((r) => inRange(r.date)) : []), [data, from, to]);
@@ -95,6 +95,9 @@ export default function Spending({ ccy }: { ccy: string }) {
         <p className="text-xs text-muted">{note}</p>
       </div>
       <div className="grid gap-4 [grid-template-columns:repeat(auto-fit,minmax(165px,1fr))]">
+        <Card><StatTile label="Total in" value={money(totals.earnings, ccy, 0)} hint={`all income, ${rangeText}`} /></Card>
+        <Card><StatTile label="Total out" value={money(totals.out, ccy, 0)} hint={`incl. ${money(totals.taxes, ccy, 0)} tax and deductions`} /></Card>
+        <Card><StatTile label="In minus out" value={money(totals.earnings - totals.out, ccy, 0)} hint={rangeText} /></Card>
         <Card><StatTile label="Total earnings" value={money(totals.earnings, ccy, 0)} hint={rangeText} /></Card>
         <Card><StatTile label="Total spend" value={money(totals.spend + totals.major, ccy, 0)} hint={`with major purchases, ${rangeText}`} /></Card>
         <Card><StatTile label="Spend without major purchases" value={money(totals.spend, ccy, 0)} hint={`${money(totals.major, ccy, 0)} major, ${rangeText}`} /></Card>
