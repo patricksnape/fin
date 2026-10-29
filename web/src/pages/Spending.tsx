@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Alert, Series, Spending as SpendingData, useApi } from "../lib/api";
+import { Alert, Pivot, Series, Spending as SpendingData, useApi } from "../lib/api";
 import { dateLabel, money, monthLabel, n, signedMoney } from "../lib/format";
 import { Part, breakdown, donut, foldTail, sliceMonths, stackedBars } from "../lib/charts";
 import { useMode } from "../lib/theme";
@@ -18,19 +18,26 @@ const ALERT_LABEL = { price_change: "Price change", lapsed: "Stopped", new: "To 
 
 export default function Spending({ ccy }: { ccy: string }) {
   const [view, setView] = useState<View>("run_rate");
-  const [months, setMonths] = useState(12);
+  const [range, setRange] = useState("12"); // "6" | "12" | "24" months back, or a calendar year
+  const year = range.length === 4 ? range : null;
+  const months = Number(range);
+  const rangeText = year ?? `the last ${months} months`;
   const [group, setGroup] = useState<string | null>(null);
   const [picked, setPicked] = useState<{ month: string; group: string } | null>(null);
   const { data, isFetching } = useApi<SpendingData>(`/api/spending?view=${view}&months=240`);
   const mode = useMode();
-  const cadence = useMemo(() => data && sliceMonths(data.by_cadence, months), [data, months]);
-  const necessity = useMemo(() => data && sliceMonths(data.by_necessity, months), [data, months]);
-  const category = useMemo(() => data && foldTail(sliceMonths(data.by_category, months)), [data, months]);
-  const accounts = useMemo(() => data && sliceMonths(data.by_account, months), [data, months]);
-  // major purchases follow the range shown: only those from the first displayed month on
+  const slice = (p: Pivot): Pivot => (year ? { ...p, rows: p.rows.filter((r) => r.month.startsWith(year)) } : sliceMonths(p, months));
+  const cadence = useMemo(() => data && slice(data.by_cadence), [data, range]);
+  const necessity = useMemo(() => data && slice(data.by_necessity), [data, range]);
+  const category = useMemo(() => data && foldTail(slice(data.by_category)), [data, range]);
+  const accounts = useMemo(() => data && slice(data.by_account), [data, range]);
+  const years = useMemo(() => (data ? [...new Set(data.by_account.rows.map((r) => r.month.slice(0, 4)))].sort().reverse() : []), [data]);
+  // major purchases and recurring payments follow the range shown, month for month
   const from = accounts?.rows[0]?.month;
-  const recurring = useMemo(() => (data ? data.recurring.filter((r) => !from || r.last_date.slice(0, 7) >= from) : []), [data, from]);
-  const major = useMemo(() => (data ? data.major.filter((r) => !from || r.date.slice(0, 7) >= from) : []), [data, from]);
+  const to = year ? accounts?.rows[accounts.rows.length - 1]?.month : undefined;
+  const inRange = (day: string) => (!from || day.slice(0, 7) >= from) && (!to || day.slice(0, 7) <= to);
+  const recurring = useMemo(() => (data ? data.recurring.filter((r) => (!from || r.last_date.slice(0, 7) >= from) && (!to || r.first_date.slice(0, 7) <= to)) : []), [data, from, to]);
+  const major = useMemo(() => (data ? data.major.filter((r) => inRange(r.date)) : []), [data, from, to]);
   if (!data || !cadence || !necessity || !category || !accounts) return <p className="text-sm text-muted">Loading…</p>;
 
   // a click on a bar or a month opens that slice of spending as transactions
@@ -73,7 +80,11 @@ export default function Spending({ ccy }: { ccy: string }) {
     <div className="space-y-6">
       <div className="flex flex-wrap items-center gap-3">
         <Segmented label="View" value={view} onChange={setView} options={[{ value: "run_rate", label: "Run-rate" }, { value: "cash", label: "Cash" }]} />
-        <Segmented label="Range" value={String(months) as "6" | "12" | "24"} onChange={(v) => setMonths(Number(v))} options={[{ value: "6", label: "6 months" }, { value: "12", label: "12 months" }, { value: "24", label: "24 months" }]} />
+        <Segmented label="Range" value={(year ? "" : range) as "6" | "12" | "24"} onChange={setRange} options={[{ value: "6", label: "6 months" }, { value: "12", label: "12 months" }, { value: "24", label: "24 months" }]} />
+        <select aria-label="Calendar year" value={year ?? ""} onChange={(e) => e.target.value && setRange(e.target.value)} className={`rounded-lg border border-hairline bg-surface px-2 py-1.5 text-xs ${year ? "bg-ink text-surface" : "text-ink-2"}`}>
+          <option value="" disabled>Year…</option>
+          {years.map((y) => <option key={y} value={y}>{y}</option>)}
+        </select>
         <p className="text-xs text-muted">{note}</p>
       </div>
       <div className="grid gap-4 [grid-template-columns:repeat(auto-fit,minmax(165px,1fr))]">
@@ -100,7 +111,7 @@ export default function Spending({ ccy }: { ccy: string }) {
       )}
       {chosen && (
         <ChartCard
-          title={`${chosen.replace("Expenses:", "")} over the last ${months} months`}
+          title={`${chosen.replace("Expenses:", "")} over ${rangeText}`}
           subtitle={`${money(partsTotal, ccy, 0)} in all, by sub-category. Pick a category; click a slice to see its transactions.`}
           onPick={(e) => parts[e.dataIndex] && open({ category: parts[e.dataIndex].account })}
           loading={isFetching}
@@ -130,11 +141,11 @@ export default function Spending({ ccy }: { ccy: string }) {
         </Card>
       )}
       <Card>
-        <CardHeader title="Recurring payments" subtitle={`${recurring.length} paid in the last ${months} months`} />
+        <CardHeader title="Recurring payments" subtitle={`${recurring.length} paid in ${rangeText}`} />
         <DataTable columns={recurringCols} rows={recurring} />
       </Card>
       <Card>
-        <CardHeader title="Major purchases" subtitle={`Kept out of monthly spend, last ${months} months`} />
+        <CardHeader title="Major purchases" subtitle={`Kept out of monthly spend, ${rangeText}`} />
         <DataTable
           columns={[
             { key: "date", label: "Date", render: (r) => dateLabel(r.date) },

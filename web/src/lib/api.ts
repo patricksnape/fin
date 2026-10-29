@@ -14,7 +14,7 @@ export interface Meta { empty: boolean; data_dir: string; base_currency: string;
 export interface Pivot { keys: string[]; rows: Array<Record<string, string>> }
 export interface Series {
   id: string; payee: string; account: string; period: string; typical_amount: string;
-  last_date: string; next_expected: string; status: "active" | "lapsed" | "proposed"; confirmed: boolean; occurrences: number;
+  first_date: string; last_date: string; next_expected: string; status: "active" | "lapsed" | "proposed"; confirmed: boolean; occurrences: number;
   price_changes: Array<[string, string, string]>;
 }
 export interface Alert { kind: "new" | "price_change" | "lapsed"; series: string; payee: string; detail?: string; date?: string; old?: string; new?: string; last_date?: string; days_overdue?: number }
