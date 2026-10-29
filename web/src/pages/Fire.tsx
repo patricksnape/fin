@@ -5,6 +5,7 @@ import { dateLabel, money, n, pct } from "../lib/format";
 import { curveChart, projectionChart } from "../lib/charts";
 import { useMode } from "../lib/theme";
 import { ChartCard } from "../components/Chart";
+import BacktestSection from "../components/Backtest";
 import { Card, CardHeader, Chip, DataTable, StatTile, StatusBadge } from "../components/ui";
 
 interface Inputs { withdrawal: string; ret: string; spend: string; birth: string; access: string; target: string }
@@ -209,6 +210,8 @@ export default function Fire({ ccy }: { ccy: string }) {
             columns={[{ key: "rate", label: "Savings rate" }, { key: "years", label: "Years to FI", align: "right" }]}
             rows={sv.savings_curve.map((c) => ({ rate: `${Math.round(n(c.rate) * 100)}%`, years: c.years_to_fi ?? "never" }))}
           />
+
+          <BacktestSection ccy={ccy} />
 
           <Card>
             <CardHeader title="How this is worked out" />

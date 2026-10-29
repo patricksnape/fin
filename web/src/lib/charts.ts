@@ -179,3 +179,16 @@ export function donut(parts: Part[], mode: Mode, unit: string): any {
     series: [{ type: "pie", data: parts.map((x, i) => ({ name: x.label, value: Math.round(x.amount), itemStyle: { color: seriesColor(mode, i) } })) }],
   };
 }
+
+/** The spread of outcomes over all historical windows: the pot after each year (10th, median, 90th percentile). */
+export function fanChart(fan: Array<{ year: number; p10: number; p50: number; p90: number }>, mode: Mode): any {
+  const line = (name: string, key: "p10" | "p50" | "p90", slot: number, dashed = false) => ({
+    name, type: "line", showSymbol: false, data: fan.map((f) => Math.round(f[key])),
+    lineStyle: { color: seriesColor(mode, slot), width: dashed ? 1.5 : 2.5, type: dashed ? "dashed" : "solid" }, itemStyle: { color: seriesColor(mode, slot) },
+  });
+  return {
+    xAxis: { type: "category", data: fan.map((f) => f.year), name: "years" },
+    yAxis: { type: "value", name: "CHF" },
+    series: [line("Weaker 10%", "p10", 2, true), line("Median", "p50", 0), line("Stronger 10%", "p90", 1, true)],
+  };
+}

@@ -22,7 +22,17 @@ from fin import account_admin, cards, config, labels, ledger, ledger_settings, r
 from fin import settings as app_settings
 from fin.agent.backends import get_backend
 from fin.agent.session import Session
-from fin.analytics import accounts, allocation, fire, fixed, networth, recurring, spend, trends
+from fin.analytics import (
+    accounts,
+    allocation,
+    backtest,
+    fire,
+    fixed,
+    networth,
+    recurring,
+    spend,
+    trends,
+)
 from fin.api.context import Context
 from fin.api.serialize import to_jsonable
 from fin.privacy.redact import load_policy
@@ -672,6 +682,55 @@ def create_app(root: Path | None = None, backend=None) -> FastAPI:
                 "limits": {
                     k.replace("-", "_"): list(v) for k, v in ledger_settings.FIRE_PARAMS.items()
                 },
+            }
+        )
+
+    @app.get("/api/fire/backtest")
+    def fire_backtest(
+        years: int = 50,
+        equity: str = "us",
+        equity_share: Decimal = Decimal(1),
+        spend: Decimal | None = None,
+        start: Decimal | None = None,
+    ):
+        """How often the money would have lasted `years` years in each historical window, starting
+        from your investable assets (or `start`) and a fixed real spend (target spend, your last 12
+        months, or `spend`)."""
+        if equity not in backtest.EQUITIES:
+            raise HTTPException(400, f"equity must be one of {', '.join(backtest.EQUITIES)}")
+        if not 1 <= years <= 80:
+            raise HTTPException(400, "years must be between 1 and 80")
+        if not 0 <= equity_share <= 1:
+            raise HTTPException(400, "equity_share must be between 0 and 1")
+        d = ctx.data()
+        jst = backtest.load(root)
+        if jst is None:
+            return ok(
+                {
+                    "ready": False,
+                    "reason": "The market history file is not in sources/market-history/",
+                }
+            )
+        st = fire.status(d, fire.from_ledger(d))
+        if not st["ready"]:
+            return ok({"ready": False, "reason": st["reason"]})
+        pot = start if start is not None else st["assets"]["investable"]
+        yearly = spend if spend is not None else st["basis"]["annual_spend"]
+        if pot <= 0 or yearly <= 0:
+            return ok({"ready": False, "reason": "Needs investable assets and a spend above zero"})
+        held = allocation.allocation(
+            allocation.holdings(d.led, d.settings.base_currency), "currency"
+        )
+        usd = held[held["currency"] == "USD"]["weight"].sum() if len(held) else Decimal(0)
+        result = backtest.run(jst, float(pot), float(yearly), years, equity, float(equity_share))
+        return ok(
+            {
+                **result,
+                "start": pot,
+                "spend": yearly,
+                "usd_share": usd,
+                "choices": backtest.EQUITIES,
+                "dataset_ends": 2020,
             }
         )
 
