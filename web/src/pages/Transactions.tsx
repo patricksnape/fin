@@ -82,7 +82,7 @@ function Detail({ t, ccy }: { t: Txn; ccy: string }) {
 }
 
 /** Links carry a selection: #transactions?month=2026-03&category=Expenses:Food&kind=expense */
-export interface Initial { q?: string; start?: string; end?: string; tag?: string; account?: string; month?: string; category?: string; kind?: string; cadence?: string; necessity?: string }
+export interface Initial { exclude?: string; q?: string; start?: string; end?: string; tag?: string; account?: string; month?: string; category?: string; kind?: string; cadence?: string; necessity?: string }
 
 type SortKey = "date" | "description" | "category" | "amount";
 const KINDS = ["expense", "income", "transfer", "investment", "asset"];
@@ -106,6 +106,7 @@ export default function Transactions({ ccy, initial = {} }: { ccy: string; initi
   const [flag, setFlag] = useState<"" | "recurring" | "major">("");
   const [text, setText] = useState(initial.q ?? "");
   const [q, setQ] = useState(initial.q ?? "");
+  const [exclude, setExclude] = useState(initial.exclude ?? ""); // categories left out, from a link
   const [start, setStart] = useState(initial.start ?? ""); // a run of months from a chart on another page
   const [end, setEnd] = useState(initial.end ?? "");
   const [open, setOpen] = useState<string | null>(null);
@@ -117,6 +118,7 @@ export default function Transactions({ ccy, initial = {} }: { ccy: string; initi
   }, [text]);
 
   const params = new URLSearchParams({ month, kind, q, flag });
+  if (exclude) params.set("exclude", exclude);
   if (start) params.set("start", start);
   if (end) params.set("end", end);
   if (account) params.set("account", account);
@@ -205,6 +207,11 @@ export default function Transactions({ ccy, initial = {} }: { ccy: string; initi
           </select>
           <button aria-label="Next month" disabled={data.month === "all" || idx <= 0} onClick={() => go(-1)} className="px-3 py-1.5 text-ink-2 hover:bg-hairline disabled:opacity-30">▶</button>
         </div>
+        {exclude && (
+          <button onClick={() => setExclude("")} className="rounded-full border border-hairline bg-surface px-3 py-1 text-xs text-ink-2 hover:bg-hairline" title="Include them again">
+            without {exclude.split(",").map((c) => c.split(":").pop()).join(" and ")} ✕
+          </button>
+        )}
         {(start || end) && (
           <button onClick={() => { setStart(""); setEnd(""); }} className="rounded-full border border-hairline bg-surface px-3 py-1 text-xs text-ink-2 hover:bg-hairline" title="Show every month again">
             {start && end ? `${start} to ${end}` : start ? `from ${start}` : `to ${end}`} ✕

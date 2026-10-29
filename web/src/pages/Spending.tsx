@@ -16,6 +16,8 @@ function alertText(a: Alert, ccy: string): string {
 }
 const ALERT_LABEL = { price_change: "Price change", lapsed: "Stopped", new: "To confirm" } as const;
 
+const TILES = "grid gap-4 [grid-template-columns:repeat(auto-fit,minmax(165px,1fr))]";
+
 export default function Spending({ ccy }: { ccy: string }) {
   const [view, setView] = useState<View>("run_rate");
   const [range, setRange] = useState("12"); // "6" | "12" | "24" months back, or a calendar year
@@ -107,25 +109,46 @@ export default function Spending({ ccy }: { ccy: string }) {
         </select>
         <p className="text-xs text-muted">{note}</p>
       </div>
-      <div className="grid gap-4 [grid-template-columns:repeat(auto-fit,minmax(165px,1fr))]">
-        <Card><StatTile hero label="Savings rate" value={totals.earnings > 0 ? pct((totals.earnings - totals.spend - totals.major) / totals.earnings, 0) : "–"} hint={`${money(totals.earnings - totals.spend - totals.major, ccy, 0)} left of ${money(totals.earnings, ccy, 0)} salary and bonus after spending, before tax, ${rangeText}`} /></Card>
-        <Card><StatTile label="Kept of all income" value={totals.in > 0 ? pct((totals.in - totals.out) / totals.in, 0) : "–"} hint={`all income incl. share vests, against everything out incl. tax, ${rangeText}`} /></Card>
-        <Card><StatTile label="Total in" value={money(totals.in, ccy, 0)} hint={`all income, ${rangeText}`} /></Card>
-        <Card><StatTile label="Total out" value={money(totals.out, ccy, 0)} hint={`incl. ${money(totals.taxes, ccy, 0)} tax and deductions`} /></Card>
-        <Card><StatTile label="In minus out" value={money(totals.in - totals.out, ccy, 0)} hint={rangeText} /></Card>
-        <Card><StatTile label="Total earnings" value={money(totals.earnings, ccy, 0)} hint={`salary and bonus, ${rangeText}`} /></Card>
-        <Card><StatTile label="Total spend" value={money(totals.spend + totals.major, ccy, 0)} hint={`with major purchases, ${rangeText}`} /></Card>
-        <Card><StatTile label="Spend without major purchases" value={money(totals.spend, ccy, 0)} hint={`${money(totals.major, ccy, 0)} major, ${rangeText}`} /></Card>
-        <Card><StatTile label="Core monthly spend" value={money(average.core, ccy, 0)} hint={`average per month, ${average.months} full months`} /></Card>
-        <Card><StatTile label="Essential baseline" value={money(average.essential, ccy, 0)} hint="minimum monthly need, average" /></Card>
-        <Card><StatTile label="Discretionary" value={money(average.discretionary, ccy, 0)} hint="average per month" /></Card>
-        <Card><StatTile label="Major purchases" value={money(major.reduce((t, r) => t + n(r.amount), 0), ccy, 0)} hint={`not in monthly spend, ${rangeText}`} /></Card>
-      </div>
+      <section aria-labelledby="g-earn" className="space-y-2">
+        <h2 id="g-earn" className="text-xs font-semibold uppercase tracking-wide text-muted">Earned and kept</h2>
+        <div className={TILES}>
+          <Card><StatTile label="Savings rate" value={totals.earnings > 0 ? pct((totals.earnings - totals.spend - totals.major) / totals.earnings, 0) : "–"} hint="total earnings vs total spend" /></Card>
+          <Card><StatTile label="Total earnings" value={money(totals.earnings, ccy, 0)} hint={`salary and bonus, ${rangeText}`} /></Card>
+          <Card><StatTile label="Kept of all income" value={totals.in > 0 ? pct((totals.in - totals.out) / totals.in, 0) : "–"} hint={`all income incl. share vests, against everything out incl. tax, ${rangeText}`} /></Card>
+          <Card><StatTile label="Total in" value={money(totals.in, ccy, 0)} hint={`all income, ${rangeText}`} /></Card>
+          <Card><StatTile label="In minus out" value={money(totals.in - totals.out, ccy, 0)} hint={rangeText} /></Card>
+        </div>
+      </section>
+      <section aria-labelledby="g-spend" className="space-y-2">
+        <h2 id="g-spend" className="text-xs font-semibold uppercase tracking-wide text-muted">Spent</h2>
+        <div className={TILES}>
+          <Card><StatTile label="Total spend" value={money(totals.spend + totals.major, ccy, 0)} hint={`with major purchases, ${rangeText}`} /></Card>
+          <Card><StatTile label="Spend without major purchases" value={money(totals.spend, ccy, 0)} hint={`${money(totals.major, ccy, 0)} major, ${rangeText}`} /></Card>
+          <Card><StatTile label="Major purchases" value={money(major.reduce((t, r) => t + n(r.amount), 0), ccy, 0)} hint={`not in monthly spend, ${rangeText}`} /></Card>
+          <Card><StatTile label="Total out" value={money(totals.out, ccy, 0)} hint={`incl. ${money(totals.taxes, ccy, 0)} tax and deductions`} /></Card>
+        </div>
+      </section>
+      <section aria-labelledby="g-avg" className="space-y-2">
+        <h2 id="g-avg" className="text-xs font-semibold uppercase tracking-wide text-muted">Monthly average</h2>
+        <div className={TILES}>
+          <Card><StatTile label="Core monthly spend" value={money(average.core, ccy, 0)} hint={`average per month, ${average.months} full months`} /></Card>
+          <Card><StatTile label="Essential baseline" value={money(average.essential, ccy, 0)} hint="minimum monthly need, average" /></Card>
+          <Card><StatTile label="Discretionary" value={money(average.discretionary, ccy, 0)} hint="average per month" /></Card>
+        </div>
+      </section>
       <ChartCard
         title="Earned vs spent"
         subtitle="Salary and bonus (up) against everything you spent, major purchases included (down), before tax. The percentage under each month is the share of earnings left."
         loading={isFetching}
         option={inOut}
+        onPick={(e) => {
+          const r = flowRows[e.dataIndex];
+          if (!r) return;
+          const month = r.month.slice(0, 7);
+          // Earned is salary and bonus; Spent is every expense except tax and payroll deductions (major purchases included)
+          if (e.seriesIndex === 0) go("transactions", { kind: "income", month, category: "Income:Employer:Salary,Income:Employer:Bonus" });
+          else go("transactions", { kind: "expense", month, exclude: "Expenses:Taxes,Expenses:Social" });
+        }}
         columns={[{ key: "month", label: "Month" }, { key: "in", label: "Earned", align: "right" }, { key: "out", label: "Spent", align: "right" }, { key: "rate", label: "Left", align: "right" }]}
         rows={flowRows.map((r) => ({ month: monthLabel(r.month.slice(0, 7)), in: money(r.salary, ccy, 0), out: money(n(r.spend) + n(r.major), ccy, 0), rate: n(r.salary) > 0 ? pct((n(r.salary) - n(r.spend) - n(r.major)) / n(r.salary), 0) : "–" }))}
       />

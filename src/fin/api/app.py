@@ -280,6 +280,7 @@ def create_app(root: Path | None = None, backend=None) -> FastAPI:
         limit: int = 1000,
         start: str = "",
         end: str = "",
+        exclude: str = "",
     ):
         """Every transaction of a month (or all, or the months start..end), with filters. `summary` covers the whole month so
         the numbers do not move as you filter; `matching` is what the filters left."""
@@ -360,6 +361,11 @@ def create_app(root: Path | None = None, backend=None) -> FastAPI:
                         for p in ps
                     )
                 )
+            ]
+        skip = [x.strip() for x in exclude.split(",") if x.strip()]
+        if skip:  # categories to leave out, each with everything below it
+            rows = rows[
+                ~rows["category"].map(lambda c: any(c == k or c.startswith(k + ":") for k in skip))
             ]
         # where the expenses went, grouped at `depth` levels (2 = Expenses:Food, 3 = Expenses:Food:Dining).
         # Counted before the category filter, so everything stays on offer for picking more.
