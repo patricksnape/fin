@@ -79,7 +79,6 @@ export default function Spending({ ccy }: { ccy: string }) {
     ...keys.map((k) => ({ key: k, label: k.replace("Expenses:", ""), align: "right" as const, render: (r: Record<string, string>) => money(r[k], ccy, 0) })),
     { key: "total", label: "Total", align: "right" as const, render: (r: Record<string, string>) => money(r.total, ccy, 0) },
   ];
-  const h = data.headline;
   const note = view === "run_rate" ? "Yearly and quarterly bills are spread over the months they cover. Major purchases, taxes and payroll deductions are excluded." : "Payments in the month they were made. Major purchases, taxes and payroll deductions are excluded.";
   const recurringCols: Column<Series>[] = [
     { key: "payee", label: "Payee" },
