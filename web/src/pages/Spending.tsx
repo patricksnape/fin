@@ -27,6 +27,9 @@ export default function Spending({ ccy }: { ccy: string }) {
   const necessity = useMemo(() => data && sliceMonths(data.by_necessity, months), [data, months]);
   const category = useMemo(() => data && foldTail(sliceMonths(data.by_category, months)), [data, months]);
   const accounts = useMemo(() => data && sliceMonths(data.by_account, months), [data, months]);
+  // major purchases follow the range shown: only those from the first displayed month on
+  const from = accounts?.rows[0]?.month;
+  const major = useMemo(() => (data ? data.major.filter((r) => !from || r.date.slice(0, 7) >= from) : []), [data, from]);
   if (!data || !cadence || !necessity || !category || !accounts) return <p className="text-sm text-muted">Loading…</p>;
 
   // a click on a bar or a month opens that slice of spending as transactions
@@ -130,7 +133,7 @@ export default function Spending({ ccy }: { ccy: string }) {
         <DataTable columns={recurringCols} rows={data.recurring} />
       </Card>
       <Card>
-        <CardHeader title="Major purchases" subtitle="Kept out of monthly spend" />
+        <CardHeader title="Major purchases" subtitle={`Kept out of monthly spend, last ${months} months`} />
         <DataTable
           columns={[
             { key: "date", label: "Date", render: (r) => dateLabel(r.date) },
@@ -138,9 +141,9 @@ export default function Spending({ ccy }: { ccy: string }) {
             { key: "narration", label: "What" },
             { key: "amount", label: ccy, align: "right", render: (r) => money(r.amount, ccy, 0) },
           ]}
-          rows={data.major}
+          rows={major}
         />
-        {data.major.length > 0 && <p className="mt-2 text-right text-xs text-muted">Total {signedMoney(data.major.reduce((s, r) => s + n(r.amount), 0), ccy).replace("+", "")}</p>}
+        {major.length > 0 && <p className="mt-2 text-right text-xs text-muted">Total {signedMoney(major.reduce((s, r) => s + n(r.amount), 0), ccy).replace("+", "")}</p>}
       </Card>
     </div>
   );
