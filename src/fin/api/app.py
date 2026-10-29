@@ -97,6 +97,7 @@ class ReviewConfirm(BaseModel):
     merchant_type: str | None = None
     per_type: bool = False
     remember: bool = True
+    refs: list[str] | None = None  # settle only these payments
 
 
 class AccountEdit(BaseModel):
@@ -576,6 +577,7 @@ def create_app(root: Path | None = None, backend=None) -> FastAPI:
                     body.merchant_type,
                     body.per_type,
                     body.remember,
+                    body.refs,
                 )
             )
         except KeyError as err:

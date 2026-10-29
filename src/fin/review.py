@@ -50,7 +50,7 @@ def queue(led) -> list[dict]:
             },
         )
         g["refs"].append(e.meta["ref"])
-        g["payments"].append([e.date.isoformat(), str(spent.units.number)])
+        g["payments"].append([e.date.isoformat(), str(spent.units.number), e.meta["ref"]])
         g["categories"][spent.account] += 1
         g["sources"][e.meta.get("categorized") or "unknown"] += 1
         if mt := e.meta.get("merchant_category"):
@@ -65,7 +65,9 @@ def queue(led) -> list[dict]:
                 "payee": g["payee"],
                 "count": len(g["refs"]),
                 "refs": g["refs"],
-                "payments": sorted(g["payments"]),  # [date, amount], so a page can total any period
+                "payments": sorted(
+                    g["payments"]
+                ),  # [date, amount, ref], so a page can total any period and pick payments
                 "category": cat,
                 "needs_category": cat in (labels.UNCATEGORIZED, labels.INCOME_UNCATEGORIZED),
                 "source": g["sources"].most_common(1)[0][0],
@@ -84,14 +86,17 @@ def confirm(
     merchant_type: str | None = None,
     per_type: bool = False,
     remember: bool = True,
+    refs: list[str] | None = None,
 ) -> dict:
     """Settle a merchant: set (or keep) its category on every pending transaction, drop #review and
-    the automatic provenance, and (unless `remember` is off) remember the choice as a payee rule."""
+    the automatic provenance, and (unless `remember` is off) remember the choice as a payee rule.
+    With `refs`, only those payments are settled; the others stay pending."""
     led = ledger.load(config.main_ledger(root))
     rows = [
         (e, s)
         for e, s, _ in _pending(led, payee_key)
-        if not per_type or e.meta.get("merchant_category") == merchant_type
+        if (not per_type or e.meta.get("merchant_category") == merchant_type)
+        and (refs is None or e.meta["ref"] in refs)
     ]
     if per_type and not merchant_type:
         raise ValueError("choose which merchant type the rule is for")

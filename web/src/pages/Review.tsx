@@ -8,7 +8,7 @@ import { dateLabel, int, money } from "../lib/format";
 interface Merchant {
   payee_key: string; payee: string; count: number; category: string; needs_category: boolean;
   source: "model" | "mapping" | "rule" | "unknown"; merchant_types: string[]; total: string; currency: string;
-  payments: Array<[string, string]>; // [date, amount]
+  payments: Array<[string, string, string]>; // [date, amount, ref]
 }
 interface Queue { merchants: Merchant[]; transactions: number }
 interface Options { categories: string[] }
@@ -17,11 +17,11 @@ const SOURCE: Record<string, string> = { model: "Model guess", mapping: "From me
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 const field = "rounded-md border border-hairline bg-surface px-2 py-1 text-sm text-ink";
 
-async function confirm(m: Merchant, category: string, remember: boolean, perType: boolean): Promise<string | null> {
+async function confirm(m: Merchant, category: string, remember: boolean, perType: boolean, refs: string[] | null = null): Promise<string | null> {
   const res = await fetch("/api/review/confirm", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ payee_key: m.payee_key, category, remember, per_type: remember && perType, merchant_type: remember && perType ? m.merchant_types[0] : null }),
+    body: JSON.stringify({ payee_key: m.payee_key, category, remember, per_type: remember && perType, merchant_type: remember && perType ? m.merchant_types[0] : null, refs }),
   });
   return res.ok ? null : ((await res.json().catch(() => ({}))).detail ?? `${res.status}`);
 }
@@ -41,7 +41,7 @@ function flatten(o: unknown, path: string[] = []): Array<[string, string]> {
 }
 
 /** Everything known about each payment of one merchant, including the source's own full record. */
-function Details({ payeeKey }: { payeeKey: string }) {
+function Details({ payeeKey, selected, onToggle }: { payeeKey: string; selected: Set<string>; onToggle: (ref: string) => void }) {
   const { data } = useApi<Detail[]>(`/api/review/details?payee_key=${encodeURIComponent(payeeKey)}`);
   if (!data) return <Loading />;
   return (
@@ -49,6 +49,7 @@ function Details({ payeeKey }: { payeeKey: string }) {
       {data.map((d) => (
         <div key={d.ref} className="rounded-lg border border-hairline p-3 text-xs">
           <div className="mb-2 flex flex-wrap items-baseline gap-x-4 gap-y-1">
+            <input type="checkbox" checked={selected.has(d.ref)} onChange={() => onToggle(d.ref)} aria-label={`Select the payment of ${dateLabel(d.date)}`} />
             <span className="font-medium text-ink">{dateLabel(d.date)}</span>
             <span className="font-medium text-ink">{money(d.amount, d.currency)}</span>
             {d.card && <span className="text-ink" title={`Card ${d.card}`}>💳 {d.card_label ?? `card ${d.card} (not named yet: Settings › Cards)`}</span>}
@@ -111,7 +112,7 @@ function NewCategory({ onCreated, onCancel }: { onCreated: (account: string) => 
   );
 }
 
-function Row({ m, categories, onDone, onCategoryAdded }: { m: Merchant; categories: string[]; onDone: () => void; onCategoryAdded: () => Promise<void> }) {
+function Row({ m, categories, onDone, onCategoryAdded, subset }: { m: Merchant; categories: string[]; onDone: () => void; onCategoryAdded: () => Promise<void>; subset: string[] | null }) {
   const [category, setCategory] = useState(m.needs_category ? "" : m.category);
   const [adding, setAdding] = useState(false);
   const [open, setOpen] = useState(false);
@@ -119,9 +120,13 @@ function Row({ m, categories, onDone, onCategoryAdded }: { m: Merchant; categori
   const [perType, setPerType] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const toggle = (ref: string) => setSelected((s) => { const n = new Set(s); if (n.has(ref)) n.delete(ref); else n.add(ref); return n; });
+  // a period filter or a ticked selection limits Confirm to those payments
+  const picked = selected.size > 0 ? [...selected] : subset;
   const save = async () => {
     setBusy(true);
-    const err = await confirm(m, category, remember, perType);
+    const err = await confirm(m, category, remember, perType, picked);
     setBusy(false);
     if (err) setError(err);
     else onDone();
@@ -148,9 +153,9 @@ function Row({ m, categories, onDone, onCategoryAdded }: { m: Merchant; categori
           only this merchant type
         </label>
       )}
-      <button onClick={save} disabled={!category || busy} className="rounded-md bg-ink px-3 py-1 text-sm text-surface disabled:opacity-40">{busy ? "Saving…" : "Confirm"}</button>
+      <button onClick={save} disabled={!category || busy} className="rounded-md bg-ink px-3 py-1 text-sm text-surface disabled:opacity-40">{busy ? "Saving…" : selected.size > 0 ? `Confirm ${selected.size} selected` : subset ? `Confirm these ${m.count}` : "Confirm"}</button>
       {error && <span role="alert" className="text-bad">{error}</span>}
-      {open && <Details payeeKey={m.payee_key} />}
+      {open && <Details payeeKey={m.payee_key} selected={selected} onToggle={toggle} />}
       {adding && (
         <NewCategory
           onCancel={() => setAdding(false)}
@@ -242,10 +247,10 @@ export default function Review() {
             )}
             {filtered && <button onClick={() => { setYear(""); setMonth(""); }} className="text-sm text-accent underline-offset-2 hover:underline">Clear filter</button>}
           </div>
-          {filtered && <p className="mb-2 text-xs text-muted">{int(rows.length)} merchants with payments in this period. Counts and totals are for the period; Confirm still labels all of a merchant’s pending payments.</p>}
+          {filtered && <p className="mb-2 text-xs text-muted">{int(rows.length)} merchants with payments in this period. Counts and totals are for the period, and Confirm labels only those payments (a merchant’s others stay pending).</p>}
           {rows.length === 0 ? <p className="text-sm text-ink-2">Nothing to review in this period.</p> : (
             <ul className="divide-y divide-hairline">
-              {rows.map(({ m }) => <Row key={m.payee_key} m={m} categories={options.categories} onDone={refresh} onCategoryAdded={refresh} />)}
+              {rows.map(({ m, ps, all }) => <Row key={m.payee_key} m={m} categories={options.categories} onDone={refresh} onCategoryAdded={refresh} subset={filtered && ps.length < all ? ps.map(([, , ref]) => ref) : null} />)}
             </ul>
           )}
         </>

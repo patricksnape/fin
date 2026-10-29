@@ -280,3 +280,27 @@ def test_cards_are_named_and_filterable(tmp_path):
         assert t["matching"] == 1 and t["rows"][0]["card_label"] == "Anna (Visa)"
         assert t["cards"] == [{"value": "Anna (Visa)", "count": 1}]
         assert c.get("/api/transactions?month=all&card=Nobody").json()["matching"] == 0
+
+
+def test_review_confirm_can_settle_only_some_payments(tmp_path):
+    root = tmp_path / "repo"
+    demo.create_demo(root)
+    with TestClient(create_app(root)) as c:
+        many = next(m for m in c.get("/api/review").json()["merchants"] if m["count"] > 1)
+        keep, rest = many["refs"][0], many["refs"][1:]
+        ok = c.post(
+            "/api/review/confirm",
+            json={
+                "payee_key": many["payee_key"],
+                "category": "Expenses:Food:Dining",
+                "remember": False,
+                "refs": rest,
+            },
+        )
+        assert ok.status_code == 200, ok.text
+        left = next(
+            m
+            for m in c.get("/api/review").json()["merchants"]
+            if m["payee_key"] == many["payee_key"]
+        )
+        assert left["refs"] == [keep]  # the payment that was not picked is still pending
