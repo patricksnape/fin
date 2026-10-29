@@ -148,10 +148,10 @@ def details(root: Path, payee_key: str) -> list[dict]:
                 "tags": sorted(e.tags or ()),
                 "card": e.meta.get("card"),
                 "card_label": cards.label(names, ref.partition(":")[0], e.meta.get("card")),
-                "meta": {
-                    k: v
+                "meta": {  # text only: Beancount's own bookkeeping (like __tolerances__) is not shown
+                    k: str(v)
                     for k, v in (e.meta or {}).items()
-                    if k not in ("filename", "lineno", "ref")
+                    if k not in ("filename", "lineno", "ref") and not k.startswith("__")
                 },
                 "record": record,
             }

@@ -304,3 +304,13 @@ def test_review_confirm_can_settle_only_some_payments(tmp_path):
             if m["payee_key"] == many["payee_key"]
         )
         assert left["refs"] == [keep]  # the payment that was not picked is still pending
+
+
+def test_review_details_meta_is_plain_text(tmp_path):
+    root = tmp_path / "repo"
+    demo.create_demo(root)
+    with TestClient(create_app(root)) as c:
+        for m in c.get("/api/review").json()["merchants"][:5]:
+            for row in c.get("/api/review/details", params={"payee_key": m["payee_key"]}).json():
+                assert all(isinstance(v, str) for v in row["meta"].values())
+                assert not any(k.startswith("__") for k in row["meta"])

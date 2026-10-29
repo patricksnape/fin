@@ -56,7 +56,7 @@ function Details({ payeeKey, selected, onToggle }: { payeeKey: string; selected:
             <span className="break-words text-ink-2">{d.narration || d.payee}</span>
           </div>
           <dl className="grid grid-cols-[minmax(8rem,12rem)_1fr] gap-x-4 gap-y-1">
-            {(d.record ? flatten(d.record) : Object.entries(d.meta)).map(([k, v], i) => (
+            {(d.record ? flatten(d.record) : Object.entries(d.meta).filter(([k]) => !k.startsWith("__")).map(([k, v]): [string, string] => [k, typeof v === "object" ? JSON.stringify(v) : String(v)])).map(([k, v], i) => (
               <div key={`${k}-${i}`} className="contents">
                 <dt className="capitalize text-muted">{k.replaceAll("_", " ")}</dt>
                 <dd className="break-words text-ink">{v}</dd>
