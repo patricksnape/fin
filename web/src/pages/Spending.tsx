@@ -110,7 +110,7 @@ export default function Spending({ ccy }: { ccy: string }) {
         <Card><StatTile label="Core monthly spend" value={money(average.core, ccy, 0)} hint={`average per month, ${average.months} full months`} /></Card>
         <Card><StatTile label="Essential baseline" value={money(average.essential, ccy, 0)} hint="minimum monthly need, average" /></Card>
         <Card><StatTile label="Discretionary" value={money(average.discretionary, ccy, 0)} hint="average per month" /></Card>
-        <Card><StatTile label="Major purchases this year" value={money(h.major_this_year, ccy, 0)} hint="not in monthly spend" /></Card>
+        <Card><StatTile label="Major purchases" value={money(major.reduce((t, r) => t + n(r.amount), 0), ccy, 0)} hint={`not in monthly spend, ${rangeText}`} /></Card>
       </div>
       <ChartCard title="Spend by cadence" subtitle="Recurring payments, regular variable spend, and one-offs. Click a bar to see its transactions." onPick={pickFrom(cadence, "cadence")} loading={isFetching} option={stackedBars(cadence, mode, true)} columns={monthCols(cadence.keys)} rows={cadence.rows} />
       <div className="grid gap-6 xl:grid-cols-2">
