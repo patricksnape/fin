@@ -129,10 +129,15 @@ def check_derived(root: Path, name: str) -> list[Finding]:
     folder = root / "ledger" / "imported" / mod.SOURCE / "derived"
     on_disk = sorted(folder.glob("*.beancount")) if folder.exists() else []
     try:
-        arg = root if "root" in inspect.signature(fn).parameters else mod.source_files(root)
-        if not arg:
+        params = inspect.signature(fn).parameters
+        files = mod.source_files(root)
+        if not files:
             return []
-        want = fn(arg)
+        want = (
+            fn(root, files)
+            if "root" in params and "files" in params
+            else fn(root if "root" in params else files)
+        )
     except Exception as e:  # noqa: BLE001  reported, not raised
         return [Finding(ERROR, area, f"could not render: {type(e).__name__}: {e}")]
     if len(on_disk) != 1:

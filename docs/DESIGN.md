@@ -120,6 +120,13 @@ sources make a full run take a couple of minutes; `--source` audits one.
   booked as salary). A receipt with no confirmation is grossed up by the share the confirmations
   show was held back, and says so in its `basis`. `rules/etrade.yaml` names the months in which a
   receipt is an ESPP purchase.
+- **Pillar 3a at VIAC.** The web app answers its data endpoints only with headers its own scripts add,
+  so `fin fetch viac` records the JSON the logged-in page loads (`sources/viac/<day>_<login>_capture.json`:
+  response bodies only, never a header or token). Each portfolio gets a cash account that books every
+  contribution, fee, interest, dividend and trade cash leg, asserted daily against the balance VIAC prints
+  after each booking, and a securities account at cost with month-end value marks (the daily value, less
+  the cash). A contribution leg pairs with the bank payment through the clearing account.
+  `rules/viac.yaml` maps portfolio numbers to accounts; a partner's login is another capture.
 
 ## Categorization and spend
 - Uncategorized postings go to `Expenses:Uncategorized` / `Income:Uncategorized`, tagged

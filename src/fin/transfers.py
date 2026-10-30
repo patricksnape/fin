@@ -37,6 +37,7 @@ BANK_PREFIX = (
     "Assets:IBKR:Cash:",
     "Assets:Schwab:Cash:",
     "Assets:ETrade:Cash:",
+    "Assets:Pension:",
 )
 CARD_WINDOW = 5  # days between the bank debit and the card crediting it
 OWN_WINDOW = 3  # days between the two sides of a move between own bank accounts
