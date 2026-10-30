@@ -31,7 +31,13 @@ UNSORTED = {labels.UNCATEGORIZED, "Income:Uncategorized", CLEARING}
 # a bank debit whose payee or text names one of these is a card payment
 CARD_PAYEES = ("swisscard", "ubs card center")
 # accounts that send and receive transfers
-BANK_PREFIX = ("Assets:UBS:", "Assets:Wise:", "Assets:IBKR:Cash:", "Assets:Schwab:Cash:")
+BANK_PREFIX = (
+    "Assets:UBS:",
+    "Assets:Wise:",
+    "Assets:IBKR:Cash:",
+    "Assets:Schwab:Cash:",
+    "Assets:ETrade:Cash:",
+)
 CARD_WINDOW = 5  # days between the bank debit and the card crediting it
 OWN_WINDOW = 3  # days between the two sides of a move between own bank accounts
 
@@ -254,13 +260,18 @@ RECEIVERS = ("Assets:IBKR:",)
 IN_FLIGHT = 14  # days a share transfer may take
 
 
-def _moved_lots(led, prefixes: tuple[str, ...], sign: int) -> dict[tuple[str, date], list]:
-    """(commodity, lot date) -> [shares, cost, last day moved], for lots moved through clearing."""
+def _moved_lots(
+    led, prefixes: tuple[str, ...], sign: int, skip: frozenset[str] = frozenset()
+) -> dict[tuple[str, date], list]:
+    """(commodity, lot date) -> [shares, cost, last day moved], for lots moved through clearing.
+    Transactions named in `skip` (by ref) are left out."""
     out: dict[tuple[str, date], list] = defaultdict(lambda: [Decimal(0), Decimal(0), None])
     for e in led.entries:
         if not isinstance(e, data.Transaction) or not any(
             p.account == CLEARING for p in e.postings
         ):
+            continue
+        if (e.meta or {}).get("ref") in skip:
             continue
         for p in e.postings:
             if p.cost is not None and p.account.startswith(prefixes) and p.units.number * sign > 0:
@@ -276,7 +287,14 @@ def share_moves(led, today: date | None = None) -> dict[str, list[str]]:
     `mismatch` (shares or cost differ), `not_arrived` (left over IN_FLIGHT days ago, nothing came),
     `no_sender` (arrived, but no broker fin imports sent it), `in_flight` (left recently)."""
     today = today or ledger.as_of(led)
-    sent, got = _moved_lots(led, SENDERS, -1), _moved_lots(led, RECEIVERS, +1)
+    # a sender that holds plain shares, not cost lots (a plan broker whose statements give no cost),
+    # names the receiving transaction in `moved_to`: that side is checked by the link, not by lot
+    claimed = frozenset(
+        e.meta["moved_to"]
+        for e in led.entries
+        if isinstance(e, data.Transaction) and (e.meta or {}).get("moved_to")
+    )
+    sent, got = _moved_lots(led, SENDERS, -1), _moved_lots(led, RECEIVERS, +1, claimed)
     out: dict[str, list[str]] = {
         "mismatch": [],
         "not_arrived": [],

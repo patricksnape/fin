@@ -13,6 +13,7 @@ SOURCES = {
     "wise": "fin.importers.wise",
     "ibkr": "fin.importers.ibkr",
     "schwab": "fin.importers.schwab",
+    "etrade": "fin.importers.etrade",
     "ubs-pdf": "fin.importers.ubs_pdf",
     "ubs-mortgage": "fin.importers.ubs_mortgage",
 }

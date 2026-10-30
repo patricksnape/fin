@@ -90,6 +90,15 @@ commit    git commit in fin-data
   Sales close lots by their cost date and price, which survive a move between brokers. Prices on
   award dates come from a daily history file in the data repo (`sources/market-history/<SYMBOL>.csv`)
   or the ledger's own prices; without one the growth before the vest is left out, not guessed.
+- **Plan-broker statements (E*TRADE).** The monthly brokerage statements (PDF, `sources/etrade/`)
+  list receipts, sales, dividends, wires, deliveries to another broker and splits, with closing cash
+  and shares, but no cost, grant or tax kept at release. The account therefore holds plain shares,
+  not lots: a receipt is plan income at the market price of the day (marked as an estimate), a sale
+  books the broker's price and fees with no gain, and a delivery books the value the receiving broker
+  booked, naming that transaction in `moved_to`, so the clearing account nets to zero. Each statement
+  is checked against its own cash and against its neighbours; a month with no statement shows up as
+  an opening balance on the next one. The parser is versioned by layout (`v1` = 2017-2020); an
+  unknown layout is refused, so a newer export gets a parser of its own.
 
 ## Categorization and spend
 - Uncategorized postings go to `Expenses:Uncategorized` / `Income:Uncategorized`, tagged
