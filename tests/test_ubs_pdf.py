@@ -201,8 +201,8 @@ def test_only_history_before_the_api_is_booked_and_balances_are_asserted(data, p
         )
     ]
     assert (
-        ubs_pdf.derived(data).count("balance Assets:UBS:Checking") == 0
-    )  # a statement reaching into the API's days is not asserted
+        ubs_pdf.derived(data).count("balance Assets:UBS:Checking") == 1
+    )  # a statement reaching into the API's days is asserted too, against the API's rows
     led = ledger.load(config.main_ledger(data))
     assert not [e for e in led.errors if "Assets:UBS" not in str(e)]
     assert cli is not None

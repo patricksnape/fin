@@ -327,12 +327,13 @@ def needed_accounts(root: Path) -> dict[str, dict]:
 
 
 def derived(root: Path) -> str:
-    """Each statement's closing balance as a `balance` assertion (the day after it ends), up to the
-    day before the API's history begins, where the importer's responsibility ends."""
-    mapped, cutoff = account_map(root), api_start(root)
+    """Each statement's closing balance as a `balance` assertion (the day after it ends). Statements
+    from the API's years are asserted too: the rows are the API's, so the statement is an independent
+    check of them."""
+    mapped = account_map(root)
     lines = []
     for st in statements(source_files(root)):
-        if st.account in mapped and (cutoff is None or st.end < cutoff):
+        if st.account in mapped:
             lines.append(
                 f"{date.fromordinal(st.end.toordinal() + 1)} balance {mapped[st.account]}  {st.closing} CHF"
             )
