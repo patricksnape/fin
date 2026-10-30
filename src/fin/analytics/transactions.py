@@ -1,5 +1,6 @@
 """Every transaction as one row, with its label and flags, for reviewing what the charts count."""
 
+import functools
 from decimal import Decimal
 from pathlib import Path
 
@@ -153,10 +154,15 @@ def transactions(led: Ledger, model: SpendModel, base: str = "CHF") -> pd.DataFr
     return pd.DataFrame(rows, columns=COLUMNS)
 
 
-def _relative(filename: str | None, root: Path) -> str | None:
-    if not filename:
-        return None
+@functools.lru_cache(maxsize=8192)
+def _relative_to(filename: str, root: str) -> str:
     try:
         return str(Path(filename).relative_to(root))
     except ValueError:
         return filename
+
+
+def _relative(filename: str | None, root: Path) -> str | None:
+    """The file a transaction was read from, relative to the data repo. A file holds many
+    transactions, so the answer is remembered."""
+    return _relative_to(filename, str(root)) if filename else None

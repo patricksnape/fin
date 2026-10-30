@@ -31,7 +31,15 @@ def _q(v) -> Decimal:
 
 
 def accounts(data_: engine.Data) -> dict:
-    """Institutions with their accounts. An account appears once it has any posting."""
+    """Institutions with their accounts. An account appears once it has any posting. Worked out once
+    per loaded ledger: every account page reads it too."""
+    cached = getattr(data_, "_accounts_overview", None)
+    if cached is None:
+        cached = data_._accounts_overview = _accounts(data_)
+    return cached
+
+
+def _accounts(data_: engine.Data) -> dict:
     led, base = data_.led, data_.settings.base_currency
     reg = registry.of(led)
     market = Market.of(led.entries, base)
@@ -124,24 +132,37 @@ def accounts(data_: engine.Data) -> dict:
     }
 
 
+def _by_ref(data_: engine.Data) -> dict:
+    """`ref -> (kind, needs_review)` for the transaction table. A frame indexed by ref has repeated
+    (empty) refs, and looking one up then scans the whole index, so this is a plain dict."""
+    found = getattr(data_, "_by_ref", None)
+    if found is None:
+        table = data_.transactions
+        found = {}
+        for ref, kind, review in zip(
+            table["ref"], table["kind"], table["needs_review"], strict=True
+        ):
+            if isinstance(ref, str) and ref not in found:
+                found[ref] = (kind, bool(review))
+        data_._by_ref = found
+    return found
+
+
 def account_ledger(data_: engine.Data, account: str) -> dict:
     """Every posting to `account` in order, each with the balance after it, in the account's own
     units (CHF, EUR, shares...). Raises KeyError for an account with no postings."""
     led, base = data_.led, data_.settings.base_currency
     market = Market.of(led.entries, base)
-    table = data_.transactions.set_index("ref")
+    by_ref = _by_ref(data_)
     running: dict[str, Decimal] = defaultdict(Decimal)
     rows = []
     for e in led.entries:
         if not isinstance(e, data.Transaction) or not any(p.account == account for p in e.postings):
             continue
         ref = (e.meta or {}).get("ref")
-        info = None
-        if (
-            ref is not None and ref in table.index
-        ):  # a hand-written entry has no ref; a ref may repeat
-            found = table.loc[ref]
-            info = found.iloc[0] if found.ndim == 2 else found
+        info = by_ref.get(
+            ref
+        )  # a hand-written entry has no ref; a ref may repeat (the first counts)
         for p in e.postings:
             if p.account != account or p.units.number is None:
                 continue
@@ -163,8 +184,8 @@ def account_ledger(data_: engine.Data, account: str) -> dict:
                     "value": _q(market.convert(convert.get_weight(p), e.date)),
                     "balance": running[p.units.currency],
                     "counterparty": biggest.account if biggest else "",
-                    "kind": info["kind"] if info is not None else None,
-                    "needs_review": bool(info["needs_review"]) if info is not None else False,
+                    "kind": info[0] if info is not None else None,
+                    "needs_review": info[1] if info is not None else False,
                 }
             )
     if not rows:
