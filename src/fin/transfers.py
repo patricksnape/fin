@@ -138,17 +138,19 @@ def find_pairs(legs: list[Leg]) -> tuple[list[tuple[Leg, Leg]], list[Leg]]:
     return pairs, ambiguous
 
 
+# the accounts that hold foreign money and can be the other half of a CHF transfer
+FOREIGN = ("Assets:Wise:", "Assets:ETrade:Cash:")
 CROSS_WINDOW = 3  # days between a CHF movement at the bank and the foreign one at Wise (a weekend)
 CROSS_TOLERANCE = Decimal("0.06")  # how far the amounts may be from that day's exchange rate (fees)
 
 
 def find_cross_pairs(legs: list[Leg], market, used: set[str]) -> list[tuple[Leg, Leg]]:
-    """`[(bank leg in CHF, Wise leg in another currency)]` for money sent to (or taken from) Wise
-    that Wise converted on arrival: no CHF amount exists on the Wise side, so the two are matched on
+    """`[(bank leg in CHF, foreign leg in another currency)]` for money sent to (or taken from) Wise
+    or a plan broker that converted it on arrival: no CHF amount exists on the Wise side, so the two are matched on
     being already marked as transfers, close in time, opposite in direction, and equal in value at
     that day's rate within a tolerance for fees. A leg with more than one candidate is left alone."""
     banks = [x for x in legs if x.ref not in used and x.counter == CLEARING and x.account.startswith("Assets:UBS:") and x.currency == "CHF"]  # fmt: skip
-    wise = [x for x in legs if x.ref not in used and x.counter == CLEARING and x.account.startswith("Assets:Wise:") and x.currency != "CHF"]  # fmt: skip
+    wise = [x for x in legs if x.ref not in used and x.counter == CLEARING and x.account.startswith(FOREIGN) and x.currency != "CHF"]  # fmt: skip
     edges = []
     for b in banks:
         for w in wise:
@@ -170,7 +172,7 @@ def _rewrite_priced(block: list[str], other_ref: str, chf: Decimal) -> list[str]
     out = [re.sub(r"\s+#review\b", "", block[0])]
     credit = None
     for line in block[1:]:
-        m = re.match(r"^(\s+Assets:Wise:\S+\s+)(-?[\d.]+) (\S+)$", line)
+        m = re.match(r"^(\s+Assets:(?:Wise|ETrade:Cash):\S+\s+)(-?[\d.]+) (\S+)$", line)
         if m:
             credit = Decimal(m.group(2)) > 0
             line = f"{m.group(1)}{m.group(2)} {m.group(3)} @@ {chf} CHF"

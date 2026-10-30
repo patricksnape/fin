@@ -707,7 +707,7 @@ def derived(files: list[Path]) -> str:
 
 
 def after_import(root: Path) -> list[str]:
-    from fin import config, gitops, ledger, transfers
+    from fin import config, gitops, ledger, prices, transfers
 
     path = root / DERIVED / "balances.beancount"
     text = derived(source_files(root))
@@ -729,4 +729,9 @@ def after_import(root: Path) -> list[str]:
                 ]
             gitops.commit_all(root, "etrade: statement balances")
             out.append("every statement's closing balance agrees with the ledger")
-    return out + transfers.share_move_report(root)
+    out += transfers.share_move_report(root)
+    try:  # dollars held since the first statement need the exchange rate of those days
+        n = prices.update(root)
+    except OSError as e:
+        return [*out, f"could not fetch exchange rates ({e}); run `fin prices` when online"]
+    return [*out, *([f"added {n} exchange rate(s)"] if n else [])]

@@ -329,3 +329,28 @@ def test_the_importer_is_registered_and_names_no_employer():
 
     assert importers.get("etrade") is etrade
     assert "AAPL" not in Path(etrade.__file__).read_text()
+
+
+def test_a_dollar_wire_from_the_plan_broker_pairs_with_the_franc_deposit_at_the_bank():
+    from fin import transfers as T
+
+    class Rates:
+        def price(self, *_):
+            return D("0.94")
+
+    def leg(ref, day, account, amount, ccy):
+        return T.Leg(ref, day, account, D(amount), ccy, "", T.CLEARING, "f", 1)
+
+    bank = leg("ubs:1", date(2018, 3, 2), "Assets:UBS:Checking", "900.00", "CHF")
+    wire = leg("etrade:1", date(2018, 2, 28), "Assets:ETrade:Cash:USD", "-1000.00", "USD")
+    pairs = T.find_cross_pairs([bank, wire], Rates(), set())
+    assert [(b.ref, w.ref) for b, w in pairs] == [("ubs:1", "etrade:1")]
+    block = [
+        '2018-02-28 * "E*TRADE" "wire out: fx wire"',
+        '  ref: "etrade:1"',
+        "  Assets:ETrade:Cash:USD  -1000.00 USD",
+        "  Assets:Transfers:Pending  1000.00 USD",
+    ]
+    out = T._rewrite_priced(block, "ubs:1", D("900.00"))
+    assert "  Assets:ETrade:Cash:USD  -1000.00 USD @@ 900.00 CHF" in out
+    assert "  Assets:Transfers:Pending  900.00 CHF" in out
