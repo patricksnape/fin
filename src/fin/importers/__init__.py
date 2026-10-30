@@ -16,6 +16,7 @@ SOURCES = {
     "etrade": "fin.importers.etrade",
     "ubs-pdf": "fin.importers.ubs_pdf",
     "ubs-mortgage": "fin.importers.ubs_mortgage",
+    "viac": "fin.importers.viac",
 }
 
 
