@@ -99,6 +99,13 @@ commit    git commit in fin-data
   is checked against its own cash and against its neighbours; a month with no statement shows up as
   an opening balance on the next one. The parser is versioned by layout (`v1` = 2017-2020); an
   unknown layout is refused, so a newer export gets a parser of its own.
+  Release and purchase confirmations (`sources/etrade/release-confirmations/`,
+  `purchase-confirmations/`) are matched to receipts by symbol, size and date: the vest is then
+  booked as it happened (all shares as income at that day's value, the ones held back as
+  `RSU-Withholding`; an ESPP purchase splits the discount from the payroll contribution, which is
+  booked as salary). A receipt with no confirmation is grossed up by the share the confirmations
+  show was held back, and says so in its `basis`. `rules/etrade.yaml` names the months in which a
+  receipt is an ESPP purchase.
 
 ## Categorization and spend
 - Uncategorized postings go to `Expenses:Uncategorized` / `Income:Uncategorized`, tagged

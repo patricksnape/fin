@@ -392,3 +392,107 @@ def test_shares_held_without_a_cost_are_valued_through_the_currency_they_are_quo
     )  # 10 x 20 x 0.90
     with pytest.raises(ValueError, match="No ACME/CHF price"):
         market.value(Position(pos.units, None), date(2021, 2, 1))  # before any quote
+
+
+RELEASE = [
+    "EMPLOYEE STOCK PLAN RELEASE CONFIRMATION",
+    "Provided by ACME CORP",
+    "Release Summary",
+    "Account Number 1 Release Date 04-15-2021",
+    "Tax Payment Method Withhold Shares Shares Released 100.0000",
+    "Company Name (Symbol) ACME CORP (ACME) Market Value Per Share $20.000000",
+    "Award Number 5 Award Price Per Share $0.000000",
+    "Shares Traded (40.0000) Dividend Equivalents $1.00",
+    "Shares Issued 60.0000 Total Due Participant $0.00",
+]
+PURCHASE = [
+    "EMPLOYEE STOCK PLAN PURCHASE CONFIRMATION",
+    "Provided by ACME CORP",
+    "Company Name (Symbol) ACME CORP.(ACME) Beginning Balance 0.0000",
+    "Plan 1990 Shares Purchased 50.0000",
+    "Grant Date 08-01-2020 Shares Withheld by Employer to Cover 10.0000",
+    "Purchase Begin Date 08-01-2020 Taxes",
+    "Purchase Date 01-31-2021 Total shares Purchased for Offering 40.0000",
+    "Shares Deposited in STREETNAME to 40.0000",
+    "Grant Date Market Value $15.000000",
+    "Purchase Value per Share $20.000000",
+    "Purchase Price per Share",
+    "(85.000% of $15.000000) $12.750000",
+]
+
+
+def _plan(pdfs, *docs) -> "etrade.Plan":
+    plan = etrade.Plan(None)
+    for i, lines in enumerate(docs):
+        plan.rows.append(etrade.read_confirmation(pdfs(f"c{i}.pdf", lines)))
+    return plan
+
+
+def _receive(pdfs, day: str, qty: int, extra=(), cash="100.00") -> tuple:
+    rows = [f"{day} ACME CORP ACME Receive {qty}", "RAND 9", *extra]
+    st = etrade.read_statement(pdfs("s.pdf", _statement(cash=("100.00", cash), held="", rows=rows)))
+    return st, st.events[0]
+
+
+def test_a_release_confirmation_books_the_vest_as_it_happened(pdfs):
+    plan = _plan(pdfs, RELEASE)
+    st, e = _receive(pdfs, "04/16/21", 60)
+    t = etrade._receipt(st, e, PRICE, plan, lambda *k: 1)
+    assert [" ".join(p.split()) for p in t.postings] == [
+        "Assets:ETrade:ACME 60 ACME @@ 1200.00 USD",  # the shares that arrived, at that day's value
+        "Expenses:Taxes:RSU-Withholding 800.00 USD",  # the 40 held back
+        "Income:Employer:RSU:ACME -2000.00 USD",  # all 100 that vested
+    ]
+    assert t.meta["basis"] == "confirmation c0.pdf"
+    assert plan.claim("ACME", date(2021, 4, 16), D(60)) is None  # used once
+
+
+def test_a_purchase_confirmation_splits_the_discount_from_the_payroll_contribution(pdfs):
+    plan = _plan(pdfs, PURCHASE)
+    st, e = _receive(pdfs, "02/02/21", 40)
+    t = etrade._receipt(st, e, PRICE, plan, lambda *k: 1)
+    assert [" ".join(p.split()) for p in t.postings] == [
+        "Assets:ETrade:ACME 40 ACME @@ 800.00 USD",
+        "Expenses:Taxes:RSU-Withholding 200.00 USD",
+        "Income:Employer:Salary -637.50 USD",  # 50 shares paid for at 12.75
+        "Income:Employer:ESPP:ACME -362.50 USD",  # the discount: 50 x (20 - 12.75)
+    ]
+    assert t.meta["offering_start"] == "2020-08-01"
+
+
+def test_without_a_confirmation_the_shares_are_grossed_up_by_the_share_usually_held_back(pdfs):
+    plan = _plan(pdfs, RELEASE)  # 40% held back
+    st, e = _receive(pdfs, "06/16/21", 30)
+    t = etrade._receipt(st, e, PRICE, plan, lambda *k: 1)
+    assert [" ".join(p.split()) for p in t.postings] == [
+        "Assets:ETrade:ACME 30 ACME @@ 600.00 USD",
+        "Expenses:Taxes:RSU-Withholding 400.00 USD",  # 50 vested, 20 held back
+        "Income:Employer:RSU:ACME -1000.00 USD",
+    ]
+    assert t.meta["basis"].startswith("estimate: grossed up")
+    # shares sold to cover the tax show up as trades and a `$DUE` row, so the receipt is already gross
+    st, e = _receive(
+        pdfs, "06/16/21", 30, extra=["06/20/21 Adjustment $DUE ACME 5 10.00"], cash="90.00"
+    )
+    t = etrade._receipt(st, e, PRICE, plan, lambda *k: 1)
+    assert len(t.postings) == 2
+
+
+def test_the_espp_months_in_the_rules_say_which_receipts_are_purchases(pdfs):
+    plan = etrade.Plan(None)
+    plan.conf = {"espp": {"months": [2, 8], "days": 5}}
+    st, e = _receive(pdfs, "02/02/21", 40)
+    t = etrade._receipt(st, e, PRICE, plan, lambda *k: 1)
+    assert (
+        t.postings[1] == "Income:Employer:ESPP:ACME  -800.00 USD"
+    )  # no confirmation: all of it income
+    st, e = _receive(pdfs, "02/20/21", 40)
+    assert (
+        "Income:Employer:RSU:ACME" in etrade._receipt(st, e, PRICE, plan, lambda *k: 1).postings[1]
+    )
+
+
+def test_a_confirmation_in_a_layout_it_does_not_know_is_refused_and_other_pdfs_are_ignored(pdfs):
+    assert etrade.read_confirmation(pdfs("x.pdf", ["Some other letter"])) is None
+    with pytest.raises(ImportFailed, match="newer layout"):
+        etrade.read_confirmation(pdfs("y.pdf", ["EMPLOYEE STOCK PLAN RELEASE CONFIRMATION", "x"]))

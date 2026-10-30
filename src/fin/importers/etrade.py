@@ -354,6 +354,119 @@ def _share_row(st, m, nxt: str, nxt2: str, adjustments) -> None:
 # ---- prices ------------------------------------------------------------------------------------
 
 
+RELEASE_DIRS = ("release-confirmations", "purchase-confirmations")
+
+
+def _us_day(text: str) -> date:
+    m, d, y = text.split("-")
+    return date(int(y), int(m), int(d))
+
+
+def _first(pattern: str, text: str, what: str, path: Path) -> str:
+    m = re.search(pattern, text)
+    if not m:
+        raise ImportFailed(f"{path.name}: no {what}; a newer layout needs a new parser")
+    return m.group(1)
+
+
+def read_confirmation(path: Path) -> dict | None:
+    """What an RSU release or ESPP purchase confirmation says: when, how many shares in all, how many
+    were held back for tax, how many reached the account, and the market value per share that day. A
+    PDF that is neither is ignored; one that is but does not read is an error."""
+    text = "\n".join(line for page in _pages(path) for line in page)
+    flat = text.replace("\n", " ")
+    num = r"([\d,]+(?:\.\d+)?)"
+    if "EMPLOYEE STOCK PLAN RELEASE CONFIRMATION" in text:
+        method = _first(r"Tax Payment Method (.+?) Shares Released", text, "tax method", path)
+        gross = _num(_first(rf"Shares Released {num}", text, "shares released", path))
+        issued = _num(_first(rf"Shares Issued {num}", text, "shares issued", path))
+        cover = method.lower().startswith("sell")
+        return {
+            "program": "rsu",
+            "date": _us_day(_first(r"Release Date (\d\d-\d\d-\d{4})", text, "release date", path)),
+            "sym": _first(r"\(([A-Z]+)\) Market Value Per Share", flat, "symbol", path),
+            "gross": gross,
+            "issued": issued,
+            "withheld": Decimal(0)
+            if cover
+            else gross - issued,  # sold to cover: the trade books it
+            "price": _num(_first(rf"Market Value Per Share \${num}", text, "market value", path)),
+            "sell_to_cover": cover,
+            "path": path.name,
+        }
+    if "EMPLOYEE STOCK PLAN PURCHASE CONFIRMATION" in text:
+        gross = _num(_first(rf"Shares Purchased {num}", text, "shares purchased", path))
+        net = _num(
+            _first(rf"Shares Deposited in STREETNAME to {num}", text, "shares deposited", path)
+        )
+        return {
+            "program": "espp",
+            "date": _us_day(
+                _first(r"Purchase Date (\d\d-\d\d-\d{4})", text, "purchase date", path)
+            ),
+            "sym": _first(r"\(([A-Z]+)\)", flat.replace(".(", ". ("), "symbol", path),
+            "gross": gross,
+            "issued": net,
+            "withheld": gross - net,
+            "price": _num(
+                _first(rf"Purchase Value per Share \${num}", text, "purchase value", path)
+            ),
+            "paid": _num(_first(rf"Purchase Price per Share \(.*?\) \${num}", flat, "price", path)),
+            "grant": _us_day(_first(r"Grant Date (\d\d-\d\d-\d{4})", text, "grant date", path)),
+            "sell_to_cover": False,
+            "path": path.name,
+        }
+    return None
+
+
+class Plan:
+    """The confirmations in sources/etrade/, to match against the statements' share receipts, and the
+    settings in rules/etrade.yaml:
+
+        espp: {months: [2, 8], days: 5}   # a receipt in these months, up to this day, is an ESPP purchase
+
+    A confirmation is used once."""
+
+    def __init__(self, root: Path | None):
+        self.rows: list[dict] = []
+        self.conf: dict = {}
+        if root is None:
+            return
+        import yaml
+
+        path = root / "rules" / "etrade.yaml"
+        self.conf = (yaml.safe_load(path.read_text()) or {}) if path.exists() else {}
+        for d in RELEASE_DIRS:
+            for f in sorted((root / FILES.parent / d).glob("*.pdf")):
+                row = read_confirmation(f)
+                if row:
+                    self.rows.append(row)
+
+    def claim(self, sym: str, day: date, qty: Decimal) -> dict | None:
+        """The confirmation for `qty` shares received on `day` (the statements book a day or two late)."""
+        for r in self.rows:
+            seen = r["gross"] if r["sell_to_cover"] else r["issued"]
+            if (
+                not r.get("used")
+                and r["sym"] == sym
+                and seen == qty
+                and timedelta(0) <= day - r["date"] <= timedelta(days=5)
+            ):
+                r["used"] = True
+                return r
+        return None
+
+    def is_espp(self, day: date) -> bool:
+        e = self.conf.get("espp") or {}
+        return day.month in (e.get("months") or []) and day.day <= int(e.get("days", 5))
+
+    def withheld_share(self) -> Decimal | None:
+        """The part of each release held back as shares, over the confirmations that held shares."""
+        rel = [r for r in self.rows if r["program"] == "rsu" and not r["sell_to_cover"]]
+        gross = sum(r["gross"] for r in rel)
+        return sum(r["withheld"] for r in rel) / gross if gross else None
+
+
 class Prices:
     """What a share was worth on a day, in dollars as quoted then: the ledger's own quotes first, then
     a daily history file in the data repo (`sources/market-history/<SYMBOL>.csv`, a `Close` column as
@@ -525,7 +638,69 @@ def _delivery_value(led, sym: str, day: date, qty: Decimal) -> tuple[Decimal, st
     return None
 
 
-def _txns(st: Statement, price: Callable, led) -> list[RawTxn]:
+def _receipt(st: Statement, e: dict, price: Callable, plan: Plan, nth) -> RawTxn:
+    """Shares that arrived from the stock plan. With a confirmation the vest or purchase is booked as it
+    happened: all the shares as income at that day's value, the ones held back for tax as withholding.
+    Without one the shares are valued at the day's price and, when the plan held shares back, grossed
+    up by the share the confirmations show was held back; the booking says which it was."""
+    sym, day, qty, a = e["sym"], e["date"], e["qty"], st.account
+    ref = (
+        f"{SOURCE}:{a}:rcv:{e['id']}"
+        if e["id"]
+        else _ref(a, "rcv", day, sym, qty, nth("receive", day, qty))
+    )
+    conf = plan.claim(sym, day, qty)
+    espp = conf["program"] == "espp" if conf else plan.is_espp(day)
+    income = f"Income:Employer:{'ESPP' if espp else 'RSU'}:{commodity(sym)}"
+    shares = holding(sym)
+    if conf is None:
+        p = price(sym, day)
+        sold_to_cover = any(
+            x["kind"] == "due" for x in st.events
+        )  # these are already all the shares
+        r = plan.withheld_share()
+        gross = qty
+        if not sold_to_cover and r is not None and not espp:
+            gross = (qty / (1 - r)).quantize(Decimal(1))
+        held = gross - qty
+        meta = {"price": f"{p:f}", "basis": "estimate: shares at the market price of the day"}
+        if held:
+            meta["basis"] = (
+                "estimate: grossed up by the share held back in the release confirmations"
+            )
+            meta["shares_held_back"] = f"{held:f}"
+        value, tax = _usd(qty * p), _usd(held * p)
+        legs = [f"{shares}  {qty} {commodity(sym)} @@ {value} USD"]
+        if tax:
+            legs.append(f"{TAX_DUE}  {tax} USD")
+        legs.append(f"{income}  {-(value + tax)} USD")
+    else:
+        p = conf["price"]
+        meta = {"price": f"{p:f}", "basis": f"confirmation {conf['path']}"}
+        value = _usd(qty * p)
+        tax = _usd(conf["withheld"] * p)
+        total = value + tax
+        legs = [f"{shares}  {qty} {commodity(sym)} @@ {value} USD"]
+        if tax:
+            legs.append(f"{TAX_DUE}  {tax} USD")
+            meta["shares_held_back"] = f"{conf['withheld']:f}"
+        if espp:
+            gain = _usd(conf["gross"] * (p - conf["paid"]))
+            pay = total - gain
+            meta["offering_start"] = conf["grant"].isoformat()
+            meta["contribution"] = f"{pay} USD"
+            legs.append(f"Income:Employer:Salary  {-pay} USD")
+            legs.append(f"{income}  {-gain} USD")
+        else:
+            legs.append(f"{income}  {-total} USD")
+    return RawTxn(
+        day, shares, qty, commodity(sym), "E*TRADE",
+        f"{sym} shares received from the {'purchase plan' if espp else 'stock plan'}", ref,
+        postings=legs, meta=meta, review=False,
+    )  # fmt: skip
+
+
+def _txns(st: Statement, price: Callable, led, plan: Plan) -> list[RawTxn]:
     out: list[RawTxn] = []
     seen: dict[tuple, int] = {}
 
@@ -536,25 +711,7 @@ def _txns(st: Statement, price: Callable, led) -> list[RawTxn]:
     for e in st.events:
         a, kind, sym = st.account, e["kind"], e.get("sym")
         if kind == "receive":
-            p = price(sym, e["date"])
-            value = _usd(e["qty"] * p)
-            ref = (
-                f"{SOURCE}:{a}:rcv:{e['id']}"
-                if e["id"]
-                else _ref(a, "rcv", e["date"], sym, e["qty"], nth(kind, e["date"], e["qty"]))
-            )
-            out.append(
-                RawTxn(
-                    e["date"], holding(sym), e["qty"], commodity(sym), "E*TRADE",
-                    f"{sym} shares received from the stock plan", ref,
-                    postings=[
-                        f"{holding(sym)}  {e['qty']} {commodity(sym)} @@ {value} USD",
-                        f"Income:Employer:RSU:{commodity(sym)}  {-value} USD",
-                    ],
-                    meta={"price": f"{p:f}", "basis": "estimate: net shares at the market price of the day"},
-                    review=False,
-                )
-            )  # fmt: skip
+            out.append(_receipt(st, e, price, plan, nth))
         elif kind == "trade":
             n = abs(e["qty"])
             gross = _usd(n * e["price"])
@@ -643,6 +800,7 @@ def parse_files(
     """Every transaction the statements show, plus the opening balances where one statement does not
     continue from the one before."""
     price = price or Prices(root).on
+    plan = Plan(root)
     out: list[RawTxn] = []
     prev: Statement | None = None
     for st in statements(files):
@@ -661,7 +819,7 @@ def parse_files(
                 )
         else:
             out += _gap(st, prev, price)
-        out += _txns(st, price, led)
+        out += _txns(st, price, led, plan)
         prev = st
     return out
 
@@ -688,6 +846,7 @@ def needed_accounts(root: Path) -> dict[str, dict]:
     for sym in sorted({s for st in sts for s in st.symbols()}):
         out[holding(sym)] = {"group": "Investments", "institution": "E*TRADE", "since": since}
         out[f"Income:Employer:RSU:{commodity(sym)}"] = {"since": since}
+        out[f"Income:Employer:ESPP:{commodity(sym)}"] = {"since": since}
         out[f"Income:Investments:Dividends:{commodity(sym)}"] = {"since": since}
     return out
 
