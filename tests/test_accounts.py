@@ -243,3 +243,30 @@ def test_an_account_filter_does_not_match_a_longer_name(tmp_path):
     c = TestClient(create_app(root, backend=object()))
     rows = c.get("/api/transactions?month=all&account=Assets:Bank").json()["rows"]
     assert [r["narration"] for r in rows] == ["pay one"]
+
+
+def test_an_account_page_opens_for_entries_without_a_ref_and_for_a_ref_used_twice(
+    tmp_path, monkeypatch
+):
+    from fastapi.testclient import TestClient
+
+    from fin import scaffold
+    from fin.api.app import create_app
+
+    root = tmp_path / "data"
+    scaffold.init_data(root)
+    monkeypatch.setenv("FIN_DATA", str(root))
+    (root / "ledger" / "accounts.beancount").write_text(
+        "2020-01-01 open Assets:Bank:Main CHF\n2020-01-01 open Expenses:Food\n2020-01-01 open Equity:Opening-Balances\n"
+    )
+    (root / "ledger" / "manual" / "m.beancount").write_text(
+        '2020-02-01 * "x" "no ref"\n  Assets:Bank:Main  100.00 CHF\n  Equity:Opening-Balances  -100.00 CHF\n\n'
+        '2020-02-02 * "x" "another, no ref"\n  Assets:Bank:Main  5.00 CHF\n  Equity:Opening-Balances  -5.00 CHF\n\n'
+        '2020-02-03 * "x" "ref once"\n  ref: "r:1"\n  Assets:Bank:Main  -1.00 CHF\n  Expenses:Food  1.00 CHF\n\n'
+        '2020-02-04 * "x" "ref twice"\n  ref: "r:1"\n  Assets:Bank:Main  -2.00 CHF\n  Expenses:Food  2.00 CHF\n'
+    )
+    run = TestClient(create_app()).get(
+        "/api/accounts/ledger", params={"account": "Assets:Bank:Main"}
+    )
+    assert run.status_code == 200, run.text
+    assert [r["units"] for r in run.json()["rows"]] == ["100.00", "5.00", "-1.00", "-2.00"]

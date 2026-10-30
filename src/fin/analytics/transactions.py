@@ -73,7 +73,14 @@ def _classify(posts: list, value: dict, reg):
     positive = sum((v for v in value.values() if v > 0), Decimal(0))
     if any(p.account.startswith("Equity:Opening") for p in posts):
         return "opening", None, positive
-    return "transfer", None, sum(value[id(p)] for p in sheet if value[id(p)] > 0)
+    # what moved: the credits to your accounts, or, when the money left for somewhere that is not one of
+    # your accounts (an account closed and not imported), what left
+    moved = sum((value[id(p)] for p in sheet if value[id(p)] > 0), Decimal(0))
+    return (
+        "transfer",
+        None,
+        moved or sum((-value[id(p)] for p in sheet if value[id(p)] < 0), Decimal(0)),
+    )
 
 
 def transactions(led: Ledger, model: SpendModel, base: str = "CHF") -> pd.DataFrame:

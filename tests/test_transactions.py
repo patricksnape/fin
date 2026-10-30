@@ -197,3 +197,35 @@ def test_api_category_filter_matches_whole_levels_and_cadence(client):
     assert rec["matching"] > 0 and {x["cadence"] for x in rec["rows"]} == {"recurring"}
     ess = client.get("/api/transactions?month=all&kind=expense&necessity=essential").json()
     assert ess["matching"] > 0 and {x["necessity"] for x in ess["rows"]} == {"essential"}
+
+
+def test_money_sent_to_an_account_that_is_not_imported_is_a_transfer_of_what_left():
+    from datetime import date
+    from decimal import Decimal as D
+
+    from beancount import loader
+    from beancount.core import convert, data
+
+    from fin import registry
+    from fin.analytics.transactions import _classify
+    from fin.analytics.valuation import Market
+
+    entries, errors, _ = loader.load_string(
+        """
+2020-01-01 open Assets:Bank:Main
+2020-01-01 open Equity:Closed-Accounts:Old
+2020-11-15 * "Bank" "sent to my closed account"
+  Assets:Bank:Main  -66.00 CHF
+  Equity:Closed-Accounts:Old  66.00 CHF
+"""
+    )
+    assert not errors
+    led = ledger.Ledger(entries, errors, {}, None)
+    txn = next(e for e in entries if isinstance(e, data.Transaction))
+    market = Market.of(entries, "CHF")
+    value = {id(p): market.convert(convert.get_weight(p), date(2020, 11, 15)) for p in txn.postings}
+    kind, primary, amount = _classify(list(txn.postings), value, registry.of(led))
+    assert (kind, primary) == ("transfer", None)
+    assert amount == D("66.00") and isinstance(
+        amount, D
+    )  # not the int 0 that broke the Accounts pages

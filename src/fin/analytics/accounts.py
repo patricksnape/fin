@@ -136,7 +136,12 @@ def account_ledger(data_: engine.Data, account: str) -> dict:
         if not isinstance(e, data.Transaction) or not any(p.account == account for p in e.postings):
             continue
         ref = (e.meta or {}).get("ref")
-        info = table.loc[ref] if ref in table.index else None
+        info = None
+        if (
+            ref is not None and ref in table.index
+        ):  # a hand-written entry has no ref; a ref may repeat
+            found = table.loc[ref]
+            info = found.iloc[0] if found.ndim == 2 else found
         for p in e.postings:
             if p.account != account or p.units.number is None:
                 continue
