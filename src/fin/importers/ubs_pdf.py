@@ -1,10 +1,11 @@
 """UBS account statements (PDF) for the history the e-banking API no longer offers.
 
 The e-banking site's own API reaches back to January 2024; the Safe (Documents) keeps monthly
-account statements for about ten years. This importer is meant to be used once: you download the
-"Account statement" PDFs from the Safe yourself and run `fin import ubs-pdf <files>`. fin keeps the
-PDFs in `sources/ubs-pdf/` and books every row they list before the API's history begins; rows from
-the day the API starts are the API's, so nothing is booked twice.
+account statements for about ten years. Run `fin fetch ubs-pdf` to download the ones you do not hold
+yet (you log in and open the Safe yourself; see `fetch`), or download them yourself and run
+`fin import ubs-pdf <files>`. fin keeps the PDFs in `sources/ubs-pdf/` and books every row they list
+before the API's history begins; rows from the day the API starts are the API's, so nothing is booked
+twice, and the statements' balances check the API's rows.
 
 A statement is text, not a scan. Each page repeats a header block and ends with a footer; the rows
 are `date | information | amount | value date | running balance`, followed by lines of detail
@@ -17,6 +18,8 @@ refused, never guessed. The running balances also become `balance` assertions in
 import functools
 import hashlib
 import re
+import tempfile
+import time
 from datetime import date, datetime
 from decimal import Decimal
 from pathlib import Path
@@ -324,6 +327,114 @@ def needed_accounts(root: Path) -> dict[str, dict]:
         base.UNCATEGORIZED: {"cadence": "regular", "necessity": "discretionary", "since": since},
         "Income:Uncategorized": {"since": since},
     }
+
+
+# ---- fetching from the Safe --------------------------------------------------------------------
+
+IN_SYNC = (
+    False  # `fin sync` skips it: the Safe is a second login, so run `fin fetch ubs-pdf` yourself
+)
+SAFE_PAGE = "/app/H36/app/#/bankDocuments"
+STATEMENT = "Account statement"  # the Safe's own name for the monthly document (English interface)
+ROWS = ".item-list__row.folder__row--file"
+LIST = ".item-list__content"
+TITLE = ".nodes-details__title-node"  # the selected document's file name
+DOWNLOAD = "#file-details-download-button"
+STATEMENT_SLACK = 62  # days before the newest statement we hold that a fetch looks back
+
+
+def default_start(root: Path) -> date | None:
+    """A little before the newest statement we already hold (statements come monthly, some yearly).
+    The file name carries the day it was issued, so no PDF has to be read."""
+    days = [
+        date.fromisoformat(f"{m[1][:4]}-{m[1][4:6]}-{m[1][6:]}")
+        for p in source_files(root)
+        if (m := re.search(r"_AccountStatement_(\d{8})", p.name))
+    ]
+    return date.fromordinal(max(days).toordinal() - STATEMENT_SLACK) if days else None
+
+
+_ROW_INFO = """(rows) => rows.map(r => ({
+    id: r.id,
+    type: (r.querySelector('.edocs-col-type') || {}).textContent?.trim() || '',
+    day: (r.querySelector('.folder__column-date') || {}).textContent?.trim() || '',
+    account: (r.querySelector('.edocs-col-account') || {}).textContent?.trim() || '',
+}))"""
+
+
+def fetch(root: Path, start: date, end: date, log=print) -> list[Path]:
+    """Open the browser, wait for you to log in and open the Safe (Documents), then download the
+    account statements dated from `start` that `sources/ubs-pdf/` does not have yet. The Safe's own API
+    is encrypted in the page, so this reads the list the page shows and presses its download button.
+    Each file is checked (`accept`) before it is kept; one that does not read is an error."""
+    try:
+        from playwright.sync_api import sync_playwright
+    except ImportError as e:
+        raise ImportFailed("playwright is not installed: uv sync --extra browser") from e
+    from fin.importers import ubs
+
+    have = {p.name for p in source_files(root)}
+    written: list[Path] = []
+    ubs.profile_dir().mkdir(parents=True, exist_ok=True)
+    with sync_playwright() as p, tempfile.TemporaryDirectory() as tmp:
+        ctx = p.chromium.launch_persistent_context(
+            str(ubs.profile_dir()),
+            channel="chrome",
+            headless=False,
+            no_viewport=True,
+            accept_downloads=True,
+        )
+        try:
+            first = ctx.pages[0] if ctx.pages else ctx.new_page()
+            first.goto(ubs.HOME)
+            log("Log in in the browser window (including 2FA), then open Documents (the Safe).")
+            safe = None
+            deadline = time.time() + 600
+            while safe is None and time.time() < deadline:
+                first.wait_for_timeout(500)
+                safe = next((pg for pg in ctx.pages if SAFE_PAGE in pg.url), None)
+            if safe is None:
+                raise ImportFailed("timed out waiting for you to open the Safe's bank documents")
+            safe.wait_for_selector(ROWS, timeout=60_000)
+            done: set[str] = set()
+            reached_start = False
+            while not reached_start:
+                infos = safe.eval_on_selector_all(ROWS, _ROW_INFO)
+                fresh = [i for i in infos if i["id"] not in done]
+                if not fresh:
+                    before = len(infos)
+                    safe.eval_on_selector(LIST, "el => { el.scrollTop = el.scrollHeight }")
+                    safe.wait_for_timeout(1500)
+                    if len(safe.query_selector_all(ROWS)) == before:
+                        break  # the list has no more rows
+                    continue
+                for info in fresh:
+                    done.add(info["id"])
+                    day = datetime.strptime(info["day"], "%d.%m.%Y").date()
+                    if day < start:
+                        reached_start = True  # newest first: nothing older is wanted
+                        break
+                    if info["type"] != STATEMENT:
+                        continue
+                    row = safe.locator(f'[id="{info["id"]}"]')
+                    row.scroll_into_view_if_needed()
+                    row.locator(".edocs-col-type").click()
+                    safe.wait_for_timeout(700)
+                    name = safe.locator(TITLE).first.inner_text().strip()
+                    if name in have:
+                        continue
+                    with safe.expect_download(timeout=60_000) as dl:
+                        safe.click(DOWNLOAD)
+                    target = Path(tmp) / name
+                    dl.value.save_as(target)
+                    written.append(accept(root, target))
+                    have.add(name)
+                    log(f"  {info['day']}: {name}")
+        finally:
+            ctx.close()
+    if not written:
+        log("  no new account statements")
+    return written
 
 
 def derived(root: Path) -> str:

@@ -511,7 +511,7 @@ def _fetch_and_import(
     from fin.importers import base, categorize
 
     mod = importers.get(source)
-    if fetch:
+    if fetch and hasattr(mod, "fetch"):  # a source of files you add yourself has none
         end = date.fromisoformat(until) if until else date.today()
         start = date.fromisoformat(since) if since else _start(mod, root, source)
         typer.echo(f"{source}: fetching {start} .. {end}")
@@ -706,7 +706,11 @@ def sync_cmd(
     from fin.importers import base
 
     root = _root()
-    names = [_source_arg(s) for s in sources] if sources else list(importers.SOURCES)
+    names = (
+        [_source_arg(s) for s in sources]
+        if sources
+        else [n for n in importers.SOURCES if getattr(importers.get(n), "IN_SYNC", True)]
+    )
     try:
         for remote_name in sync.remotes(root):
             with gitops.write_lock(root):

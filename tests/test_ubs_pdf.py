@@ -241,3 +241,27 @@ def test_interest_is_income_and_negative_interest_a_fee(pdfs):
 def test_other_credits_wait_as_income(pdfs):
     credit = ubs_pdf.parse_files([pdfs("a.pdf", _statement(ROWS))])[4]
     assert credit.payee == "Friend" and credit.counter == "Income:Uncategorized" and credit.review
+
+
+def test_a_fetch_starts_a_little_before_the_newest_statement_held(data):
+    folder = data / "sources" / "ubs-pdf"
+    folder.mkdir(parents=True)
+    assert ubs_pdf.default_start(data) is None
+    for name in ("1_AccountStatement_20260101111111.pdf", "1_AccountStatement_20261001122357.pdf"):
+        (folder / name).write_bytes(b"%PDF")
+    assert ubs_pdf.default_start(data) == date(2026, 7, 31)  # 62 days before 2026-10-01
+
+
+def test_sync_skips_sources_that_need_their_own_login_and_those_without_a_fetch(data, monkeypatch):
+    from typer.testing import CliRunner
+
+    from fin import cli, importers
+
+    assert ubs_pdf.IN_SYNC is False and not hasattr(importers.get("etrade"), "fetch")
+    seen = []
+    monkeypatch.setattr(
+        cli, "_fetch_and_import", lambda root, name, **kw: seen.append(name) or name
+    )
+    CliRunner().invoke(cli.app, ["sync", "--help"])
+    run = CliRunner().invoke(cli.app, ["sync"])
+    assert "ubs-pdf" not in seen, run.output
