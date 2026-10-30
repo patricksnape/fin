@@ -54,6 +54,31 @@ def demo_data(path: Annotated[Path, typer.Argument(help="Where to create the dem
 
 
 @app.command()
+def audit(
+    source: Annotated[
+        str | None, typer.Option("--source", help="Audit one source only (much faster)")
+    ] = None,
+):
+    """Re-read every source's raw files and compare them with the ledger; check the statement
+    balances, assertion coverage and the clearing account, and name what rests on estimates. Writes
+    details to inbox/audit.md. Exits 1 on any ERROR. The PDF sources take a couple of minutes."""
+    from fin import audit as audit_mod
+
+    root = _root()
+    if source is not None:
+        _source_arg(source)
+    findings = audit_mod.run(root, source)
+    for f in findings:
+        typer.echo(f"{f.severity:5} {f.area}: {f.text}")
+    inbox = root / "inbox"
+    inbox.mkdir(exist_ok=True)
+    (inbox / "audit.md").write_text(audit_mod.report(findings))
+    typer.echo("details in inbox/audit.md")
+    if any(f.severity == audit_mod.ERROR for f in findings):
+        raise typer.Exit(1)
+
+
+@app.command()
 def check():
     """Load the ledger and report Beancount errors. Exits 1 on any error."""
     led = ledger.load(config.main_ledger(_root()))

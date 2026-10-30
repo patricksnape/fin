@@ -61,6 +61,20 @@ commit    git commit in fin-data
 - Every source has regression tests on synthetic fixtures. An unknown export format is an error,
   never a guess.
 
+## Audit
+`fin audit` is the check `fin check` cannot be: it parses every source's raw files again (nothing is
+written) and compares them with the ledger by `ref`. A row the parser produces that the ledger lacks, a
+different date or amount on the source's own account, or a ref twice is an ERROR; a ledger ref the
+source no longer has is a WARN (a newer parser dropped it; never re-imported as a duplicate). The
+other leg is not compared, because rules, labels and the transfer matcher rewrite it on purpose. It
+also checks that each generated statement-balances file is current, that importer-fed accounts have a
+recent balance assertion, that `Assets:Transfers:Pending` nets to zero, and totals what the books rest
+on: `basis: estimate` entries, gap entries, and the tags `#etrade-unconfirmed` and
+`#untracked-external`. `rules/audit.yaml` in the data repo names accounts that have no statement to
+assert against (`account`) and known holes to total (`hole` or `tag`), each with a note. Details go
+to `inbox/audit.md` (refs, dates, amounts; no payee text); the exit code is 1 on any ERROR. The PDF
+sources make a full run take a couple of minutes; `--source` audits one.
+
 ## Ledger rules
 - **Every transaction has a unique `ref`** (`<source>:<native id>`, or a hash of the row when the
   source has none). Imports never modify existing transactions; your edits keep the `ref`, so
