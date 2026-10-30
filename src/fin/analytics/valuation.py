@@ -51,9 +51,24 @@ class Market:
         out = convert.convert_position(pos, self.base, self.pmap, d)
         if out.currency != self.base:
             out = convert.convert_amount(convert.get_cost(pos), self.base, self.pmap, d)
+        if out.currency != self.base and pos.cost is None:
+            out = self._through_quote(pos.units, d)
         if out.currency != self.base:
             raise ValueError(f"No {pos.units.currency}/{self.base} price on or before {d}")
         return out.number
+
+    def _through_quote(self, amount: Amount, d: date) -> Amount:
+        """Shares held without a cost (a plan broker's statements give none) are priced in the
+        currency they are quoted in, and that in the base currency: Beancount does not hop twice."""
+        for ccy, quote in self.pmap:
+            if ccy != amount.currency or quote == self.base:
+                continue
+            first = convert.convert_amount(amount, quote, self.pmap, d)
+            if first.currency == quote:
+                second = convert.convert_amount(first, self.base, self.pmap, d)
+                if second.currency == self.base:
+                    return second
+        return amount
 
 
 def month_end(d: date) -> date:

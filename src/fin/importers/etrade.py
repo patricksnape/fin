@@ -101,6 +101,7 @@ class Statement:
     cash_open: Decimal
     cash_close: Decimal
     held: dict[str, Decimal]  # the shares held at the end, per symbol
+    prices: dict[str, Decimal] = field(default_factory=dict)  # the closing price per symbol
     events: list[dict] = field(default_factory=list)
 
     @property
@@ -187,7 +188,8 @@ def parse_lines(path: Path, lines: list[str]) -> Statement:
                 break
         if opening is None or closing is None:
             raise ImportFailed(f"{name}: no opening and closing cash balance")
-    st = Statement(path, account, start, end, opening, closing, _holdings(lines))
+    held, quoted = _holdings(lines)
+    st = Statement(path, account, start, end, opening, closing, held, quoted)
     _rows(st, lines)
     if st.cash_open + st.cash_moved() != st.cash_close:
         raise ImportFailed(
@@ -197,11 +199,12 @@ def parse_lines(path: Path, lines: list[str]) -> Statement:
     return st
 
 
-def _holdings(lines: list[str]) -> dict[str, Decimal]:
-    """The shares held at the end, from the stocks table: `SYMBOL StkPln quantity price value ...`, or
-    without a quantity when nothing is held. The table of unvested awards has the same account type
-    but starts with a grant date."""
+def _holdings(lines: list[str]) -> tuple[dict[str, Decimal], dict[str, Decimal]]:
+    """The shares held at the end and the closing price, from the stocks table:
+    `SYMBOL StkPln quantity price value ...`, or without a quantity when nothing is held. The table of
+    unvested awards has the same account type but starts with a grant date."""
     held: dict[str, Decimal] = {}
+    quoted: dict[str, Decimal] = {}
     for ln in lines:
         t = ln.split()
         if "StkPln" not in t or re.match(r"\d+/\d+/\d{4}$", t[0]):
@@ -211,7 +214,8 @@ def _holdings(lines: list[str]) -> dict[str, Decimal]:
             raise ImportFailed(f"cannot read the holding {ln!r}")
         rest = t[i + 1 :]
         held[t[i - 1]] = Decimal(0) if len(rest) <= 3 else _num(rest[0])
-    return {s: q for s, q in held.items() if q}
+        quoted[t[i - 1]] = _num(rest[0] if len(rest) <= 3 else rest[1])
+    return {s: q for s, q in held.items() if q}, quoted
 
 
 def _rows(st: Statement, lines: list[str]) -> None:
@@ -689,7 +693,8 @@ def needed_accounts(root: Path) -> dict[str, dict]:
 
 
 def derived(files: list[Path]) -> str:
-    """Each statement's closing shares and cash as `balance` assertions (the day after it ends). The
+    """Each statement's closing price as a `price` directive, and its closing shares and cash as `balance`
+    assertions (the day after it ends). The
     cash of a statement with a sale that settles after its last day is left out: the statement counts
     the money when it arrives, the ledger when the shares go."""
     lines = []
@@ -697,6 +702,8 @@ def derived(files: list[Path]) -> str:
         after = st.end + timedelta(days=1)
         for sym in sorted(st.symbols()):
             lines.append(f"{after} balance {holding(sym)}  {st.held.get(sym, 0)} {commodity(sym)}")
+        for sym, price in sorted(st.prices.items()):  # the statement's own closing quote
+            lines.append(f"{st.end} price {commodity(sym)}  {price} USD")
         straddles = any(
             e["kind"] == "trade" and e["date"] <= st.end < e["settle"] for e in st.events
         )

@@ -354,3 +354,41 @@ def test_a_dollar_wire_from_the_plan_broker_pairs_with_the_franc_deposit_at_the_
     out = T._rewrite_priced(block, "ubs:1", D("900.00"))
     assert "  Assets:ETrade:Cash:USD  -1000.00 USD @@ 900.00 CHF" in out
     assert "  Assets:Transfers:Pending  900.00 CHF" in out
+
+
+def test_the_closing_price_of_each_statement_becomes_a_quote_and_balances_are_asserted(pdfs):
+    text = etrade.derived([pdfs("a.pdf", _statement(rows=ROWS))])
+    assert "2021-03-31 price ACME  20.0000 USD" in text
+    assert "2021-04-01 balance Assets:ETrade:ACME  10 ACME" in text
+    assert "2021-04-01 balance Assets:ETrade:Cash:USD  108.50 USD" in text
+
+
+def test_shares_held_without_a_cost_are_valued_through_the_currency_they_are_quoted_in():
+    from beancount import loader
+    from beancount.core import data
+
+    from fin.analytics.valuation import Market
+
+    entries, errors, _ = loader.load_string(
+        """
+2021-01-01 open Assets:ETrade:ACME
+2021-01-01 open Equity:Opening-Balances
+2021-03-01 price ACME 20.00 USD
+2021-03-01 price USD 0.90 CHF
+2021-03-02 * "plain shares"
+  Assets:ETrade:ACME  10 ACME @@ 200.00 USD
+  Equity:Opening-Balances  -200.00 USD
+"""
+    )
+    assert not errors
+    txn = next(e for e in entries if isinstance(e, data.Transaction))
+    pos = txn.postings[0]
+    assert pos.cost is None
+    from beancount.core.position import Position
+
+    market = Market.of(entries, "CHF")
+    assert market.value(Position(pos.units, None), date(2021, 3, 5)) == D(
+        "180.00"
+    )  # 10 x 20 x 0.90
+    with pytest.raises(ValueError, match="No ACME/CHF price"):
+        market.value(Position(pos.units, None), date(2021, 2, 1))  # before any quote
