@@ -402,6 +402,7 @@ RELEASE = [
     "Tax Payment Method Withhold Shares Shares Released 100.0000",
     "Company Name (Symbol) ACME CORP (ACME) Market Value Per Share $20.000000",
     "Award Number 5 Award Price Per Share $0.000000",
+    "Award Date 01-15-2021",
     "Shares Traded (40.0000) Dividend Equivalents $1.00",
     "Shares Issued 60.0000 Total Due Participant $0.00",
 ]
@@ -444,6 +445,10 @@ def test_a_release_confirmation_books_the_vest_as_it_happened(pdfs):
         "Income:Employer:RSU:ACME -2000.00 USD",  # all 100 that vested
     ]
     assert t.meta["basis"] == "confirmation c0.pdf"
+    assert (t.meta["award"], t.meta["award_date"]) == (
+        "5",
+        "2021-01-15",
+    )  # what the Share awards page groups by
     assert plan.claim("ACME", date(2021, 4, 16), D(60)) is None  # used once
 
 

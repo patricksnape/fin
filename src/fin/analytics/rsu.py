@@ -73,6 +73,8 @@ class Event:
     fmv: Decimal  # market price per share on `day`, in the cost currency
     paid: Decimal  # price paid per share (0 for an RSU)
     ccy: str
+    lots: bool = True  # False: the shares sit in an account that keeps no cost lots (a plan broker)
+    estimate: bool = False  # booked from a statement alone, not from the plan's own confirmation
 
     @property
     def key(self) -> tuple[date, Decimal]:
@@ -97,6 +99,14 @@ def _meta_day(e, key: str) -> date | None:
         return None
 
 
+def commodities_of(txn, prog) -> set[str]:
+    """What a plan receipt delivers: the stock named by its income account (`Income:Employer:RSU:ACME`
+    delivers ACME). An account with no symbol (Schwab's) delivers whatever carries a cost."""
+    income = prog[0].account if prog else ""
+    sym = income.rsplit(":", 1)[-1]
+    return {sym} if sym.isupper() and sym not in {"RSU", "ESPP"} else set()
+
+
 def events(entries: list) -> list[Event]:
     out = []
     for e in entries:
@@ -112,28 +122,36 @@ def events(entries: list) -> list[Event]:
             None,
         )
         stock = [
-            p for p in e.postings if p.cost and p.cost.number is not None and p.units.number > 0
+            p
+            for p in e.postings
+            if p.units.number > 0
+            and (
+                (p.cost and p.cost.number is not None)
+                or (p.price is not None and p.units.currency in commodities_of(e, prog))
+            )
         ]
         if not prog or len(stock) != 1:
             continue
         income, program = prog
         s = stock[0]
-        fmv, ccy, net = s.cost.number, s.cost.currency, s.units.number
+        lots = bool(s.cost and s.cost.number is not None)
+        priced = s.cost if lots else s.price
+        fmv, ccy, net = priced.number, priced.currency, s.units.number
+        estimate = str((e.meta or {}).get("basis", "")).startswith("estimate")
+        held_back = sum((p.units.number for p in e.postings if p.account == WITHHELD), Decimal(0))
+        withheld = held_back / fmv if held_back else Decimal(0)
         if program == "rsu":
-            held_back = sum(
-                (p.units.number for p in e.postings if p.account == WITHHELD), Decimal(0)
-            )
-            withheld = held_back / fmv if held_back else Decimal(0)
             gross, paid, start = net + withheld, Decimal(0), _meta_day(e, "award_date")
         else:
-            discount = abs(income.units.number) / net if net else Decimal(0)
-            withheld, gross, paid = Decimal(0), net, fmv - discount
+            gross = net + withheld
+            discount = abs(income.units.number) / gross if gross else Decimal(0)
+            paid = fmv if estimate else fmv - discount  # an estimate knows no discount
             start = _meta_day(e, "offering_start")
         out.append(
             Event(
                 s.units.currency, program, e.meta.get("ref", ""), str((e.meta or {}).get("award", "")),
                 (e.meta or {}).get("award_name"), start, e.date, gross.quantize(Decimal("0.0001")),
-                withheld.quantize(Decimal("0.0001")), net, fmv, paid, ccy,
+                withheld.quantize(Decimal("0.0001")), net, fmv, paid, ccy, lots, estimate,
             )
         )  # fmt: skip
     return sorted(out, key=lambda v: (v.commodity, v.day, v.ref))
@@ -193,8 +211,25 @@ class Prices:
                     rows.append((date.fromisoformat(r["Date"][:10]), Decimal(r["Close"])))
                 except (KeyError, ValueError, ArithmeticError):
                     continue
+        # a history quoted corrected for splits is multiplied back to what the share cost on each day
+        rows = [(d, v * self.unsplit(sym, d)) for d, v in rows]
         rows.sort()
         return [d for d, _ in rows], [v for _, v in rows]
+
+    def _splits(self, sym: str) -> list[tuple[date, Decimal]]:
+        return [
+            (s["date"] if isinstance(s["date"], date) else date.fromisoformat(str(s["date"])), Decimal(str(s["ratio"])))
+            for s in (self.conf.get(sym) or {}).get("splits") or []
+        ]  # fmt: skip
+
+    def unsplit(self, sym: str, day: date) -> Decimal:
+        """How many shares of today one share of `day` became (a 2-for-1 split on 2021-06-15 makes it 2
+        for every day before it)."""
+        factor = Decimal(1)
+        for when, ratio in self._splits(sym):
+            if when > day:
+                factor *= ratio
+        return factor
 
     def source(self, sym: str) -> str:
         return "history" if self.history.get(sym, ([], []))[0] else "ledger"
@@ -231,6 +266,15 @@ class Prices:
         if price is not None:
             return price
         return vals[i - 1] if i else self.approx(sym, d)
+
+    def quote_day(self, sym: str, d: date) -> date | None:
+        """The day of the price `latest` returns (a stock no longer held stops being quoted)."""
+        quoted, price = bprices.get_price(self.market.pmap, (sym, "USD"), d)
+        if price is not None:
+            return quoted
+        days = self.history.get(sym, ([], []))[0]
+        i = bisect_right(days, d)
+        return days[i - 1] if i else None
 
     def fx(self, ccy: str, d: date) -> Decimal:
         if ccy == self.market.base:
@@ -319,21 +363,24 @@ def _series(sym, program, mine, all_events, sold, held, px: Prices, as_of, base)
                 "ref": v.ref, "award": v.award, "award_name": v.name, "start": v.start, "day": v.day,
                 "days_to_event": (v.day - v.start).days if v.start else None,
                 "gross": v.gross, "withheld": v.withheld, "net": v.net, "price": v.fmv, "paid": v.paid,
-                "discount": _ratio(v.fmv - v.paid, v.fmv) if program == "espp" else None,
+                "discount": _ratio(v.fmv - v.paid, v.fmv) if program == "espp" and not v.estimate else None,
+                "estimate": v.estimate,
                 "sold": sold_units.quantize(Decimal("0.0001")), "left": left.quantize(Decimal("0.0001")),
                 "cost_usd": _q(v.net * v.fmv), "cost_chf": _q(v.net * v.fmv * fx_v),
                 "realised_usd": _q(real_usd), "realised_chf": _q(real_chf), "realised_fx_chf": _q(fx_part),
                 "unrealised_usd": _q(unreal_usd), "unrealised_chf": _q(unreal_chf), "unrealised_fx_chf": _q(unreal_fx),
                 "sell_at_event_usd": _q(v.net * v.fmv), "sell_at_event_chf": _q(v.net * v.fmv * fx_v),
                 "actual_usd": _q(actual_usd), "actual_chf": _q(actual_chf),
-                "hold_all_usd": _q(v.net * now) if now else None,
-                "hold_all_chf": _q(v.net * now * fx_now) if now else None,
+                "hold_all_usd": _q(v.net * px.unsplit(sym, v.day) * now) if now else None,
+                "hold_all_chf": _q(v.net * px.unsplit(sym, v.day) * now * fx_now) if now else None,
                 "discount_usd": _q(v.net * (v.fmv - v.paid)),
                 **grow,
             }
         )  # fmt: skip
     return {
         "commodity": sym, "program": program, "currency": ccy, "price_now": now,
+        "price_now_day": px.quote_day(sym, as_of),
+        "lots": all(v.lots for v in mine), "estimates": sum(v.estimate for v in mine),
         "price_history": px.source(sym), "events": rows,
         "awards": _awards(rows, (px.conf.get(sym) or {}).get("granted") or {}, now),
         "summary": _summary(rows),

@@ -79,7 +79,7 @@ export default function Rsu({ ccy }: { ccy: string }) {
     const held = bars(
       days.map((d) => dateLabel(d).replace(/^\d+ /, "")),
       [
-        { name: "Actual, against selling at the vest", values: days.map((d) => Math.round(byDay.get(d)!.actual - byDay.get(d)!.sell)), slot: 0 },
+        ...(s.lots !== false ? [{ name: "Actual, against selling at the vest", values: days.map((d) => Math.round(byDay.get(d)!.actual - byDay.get(d)!.sell)), slot: 0 }] : []),
         { name: "Holding everything, against selling at the vest", values: days.map((d) => Math.round(byDay.get(d)!.hold - byDay.get(d)!.sell)), slot: 3 },
       ],
       mode,
@@ -132,6 +132,7 @@ export default function Rsu({ ccy }: { ccy: string }) {
   if (!data.ready) return <Card><CardHeader title="Share awards" subtitle={data.reason} /></Card>;
   if (!s || !charts) return <Loading what="Computing share awards" />;
   const sm = s.summary;
+  const lots = s.lots !== false; // false: a broker whose statements give no cost lots, so sales and holdings are not followed
   const real = n(sm[`realised_${cur}`]);
   const unreal = n(sm[`unrealised_${cur}`]);
   const sellAt = n(sm[`sell_at_event_${cur}`]);
@@ -153,14 +154,14 @@ export default function Rsu({ ccy }: { ccy: string }) {
         <Segmented label="Currency" value={cur} onChange={(v) => setCur(v as Cur)} options={[{ value: "chf", label: ccy }, { value: "usd", label: s.currency }]} />
         <p className="text-xs text-muted">
           {label(s)}, {s.events.length} {s.program === "rsu" ? "vests" : "purchases"} through {dateLabel(data.as_of)}.
-          {s.price_now && ` Latest price ${money(s.price_now, s.currency, 2)}.`}
+          {s.price_now && ` Latest price ${money(s.price_now, s.currency, 2)}${s.price_now_day && s.price_now_day < data.as_of ? ` (last quoted ${dateLabel(s.price_now_day)})` : ""}.`}
         </p>
       </div>
       {isFetching && <Loading what="Updating" />}
       {(sm.missing_start_price > 0 || sm.missing_start_date > 0) && (
         <p className="rounded-lg border border-hairline px-3 py-2 text-xs text-ink-2">
           {sm.missing_start_price > 0 && <>{sm.missing_start_price} of {sm.events} have no price on their {s.program === "rsu" ? "award" : "offering start"} date, so the growth before the {s.program === "rsu" ? "vest" : "purchase"} is left out for them. {s.price_history === "ledger" ? <>Prices come from the ledger only. A daily history file at <code>sources/market-history/{s.commodity}.csv</code> in the data repo fills the gap.</> : <>The history file does not reach back that far.</>} </>}
-          {sm.missing_start_date > 0 && <>{sm.missing_start_date} have no award date recorded (run <code>fin rsu backfill</code>).</>}
+          {sm.missing_start_date > 0 && (lots ? <>{sm.missing_start_date} have no award date recorded (run <code>fin rsu backfill</code>).</> : <>{sm.missing_start_date} have no award or offering date: they come from a statement alone, without the plan's confirmation.</>)}
         </p>
       )}
 
@@ -168,15 +169,24 @@ export default function Rsu({ ccy }: { ccy: string }) {
         <Card><StatTile label={s.program === "rsu" ? "Vested, gross" : "Bought"} value={n(sm.gross).toLocaleString("de-CH", { maximumFractionDigits: 0 })} hint={`${sm.events} ${s.program === "rsu" ? "vests" : "purchases"}`} /></Card>
         {s.program === "rsu" && <Card><StatTile label="Kept for tax" value={n(sm.withheld).toLocaleString("de-CH", { maximumFractionDigits: 0 })} hint="shares not delivered" /></Card>}
         <Card><StatTile label="Received" value={n(sm.net).toLocaleString("de-CH", { maximumFractionDigits: 0 })} hint="shares that arrived" /></Card>
-        <Card><StatTile label="Sold" value={n(sm.sold).toLocaleString("de-CH", { maximumFractionDigits: 0 })} hint={`${n(sm.left).toLocaleString("de-CH", { maximumFractionDigits: 0 })} still held`} /></Card>
+        {lots
+          ? <Card><StatTile label="Sold" value={n(sm.sold).toLocaleString("de-CH", { maximumFractionDigits: 0 })} hint={`${n(sm.left).toLocaleString("de-CH", { maximumFractionDigits: 0 })} still held`} /></Card>
+          : <Card><StatTile label="Estimated" value={`${s.estimates} of ${sm.events}`} hint="booked from a statement alone, not the plan's confirmation" /></Card>}
       </Section>
 
-      <Section title={`Results in ${unit}`}>
-        <Card><StatTile label="Realised" value={money(real, unit, 0)} hint="sales, after fees" /></Card>
-        <Card><StatTile label="Unrealised" value={money(unreal, unit, 0)} hint="what is left, at the latest price" /></Card>
-        <Card><StatTile label="Total" value={money(real + unreal, unit, 0)} hint={cur === "chf" ? `of which exchange rate ${money(n(sm.realised_fx_chf) + n(sm.unrealised_fx_chf), unit, 0)}` : "against the price at each vest"} /></Card>
-        <Card><StatTile label="Cost" value={money(n(sm[`cost_${cur}`]), unit, 0)} hint="value of the shares when they arrived" /></Card>
-      </Section>
+      {lots ? (
+        <Section title={`Results in ${unit}`}>
+          <Card><StatTile label="Realised" value={money(real, unit, 0)} hint="sales, after fees" /></Card>
+          <Card><StatTile label="Unrealised" value={money(unreal, unit, 0)} hint="what is left, at the latest price" /></Card>
+          <Card><StatTile label="Total" value={money(real + unreal, unit, 0)} hint={cur === "chf" ? `of which exchange rate ${money(n(sm.realised_fx_chf) + n(sm.unrealised_fx_chf), unit, 0)}` : "against the price at each vest"} /></Card>
+          <Card><StatTile label="Cost" value={money(n(sm[`cost_${cur}`]), unit, 0)} hint="value of the shares when they arrived" /></Card>
+        </Section>
+      ) : (
+        <Section title={`Value in ${unit}`}>
+          <Card><StatTile label="Value when they arrived" value={money(n(sm[`cost_${cur}`]), unit, 0)} hint="net shares at the price of each vest" /></Card>
+          <Card><StatTile label="Sales and what is left" value="not followed" hint="this broker's statements give no cost lots, so what happened to each vest is unknown" /></Card>
+        </Section>
+      )}
 
       <Section title={s.program === "rsu" ? "Before the vest" : "Before the purchase"}>
         <Card><StatTile label={s.program === "rsu" ? "Award to vest" : "Offering to purchase"} value={sm.growth ? pct(sm.growth, 0) : "–"} hint={sm.growth ? `share-weighted, ${sm.growth_events} of ${sm.events}` : "no price on the start dates"} /></Card>
@@ -184,7 +194,7 @@ export default function Rsu({ ccy }: { ccy: string }) {
         {s.program === "espp" && <Card><StatTile label="Discount" value={money(sm.discount_usd, s.currency, 0)} hint="below the market price at purchase" /></Card>}
       </Section>
 
-      {charts.vested.length > 0 && (() => {
+      {lots && charts.vested.length > 0 && (() => {
         const t = charts.vested.reduce((a, v) => ({ gross: a.gross + v.gross, atAward: a.atAward + v.atAward, atVest: a.atVest + v.atVest, tax: a.tax + v.tax, received: a.received + v.received, now: a.now + v.now }), { gross: 0, atAward: 0, atVest: 0, tax: 0, received: 0, now: 0 });
         return (
           <Section title={`Vested shares only, in ${s.currency}`}>
@@ -214,9 +224,9 @@ export default function Rsu({ ccy }: { ccy: string }) {
 
       <Section title="Held against sold at the vest">
         <Card><StatTile label="Selling at each vest" value={money(sellAt, unit, 0)} hint="net shares at the vest price" /></Card>
-        <Card><StatTile label="What happened" value={money(actual, unit, 0)} hint="sales after fees plus what is left" /></Card>
-        <Card><StatTile label="Holding all of it" value={money(holdAll, unit, 0)} hint="net shares at the latest price" /></Card>
-        <Card><StatTile label="Your sales against holding" value={money(actual - holdAll, unit, 0)} hint="negative: selling cost you" /></Card>
+        {lots && <Card><StatTile label="What happened" value={money(actual, unit, 0)} hint="sales after fees plus what is left" /></Card>}
+        <Card><StatTile label="Holding all of it" value={money(holdAll, unit, 0)} hint="net shares at the latest price, through any split" /></Card>
+        <Card><StatTile label={lots ? "Your sales against holding" : "Holding against selling"} value={money(lots ? actual - holdAll : holdAll - sellAt, unit, 0)} hint={lots ? "negative: selling cost you" : "positive: holding beat selling at the vest"} /></Card>
       </Section>
 
       <ChartCard
@@ -227,7 +237,7 @@ export default function Rsu({ ccy }: { ccy: string }) {
         columns={[{ key: "label", label: "Award" }, { key: "start", label: "Price then", align: "right" }, { key: "avg", label: "Price at vest", align: "right" }, { key: "growth", label: "Growth", align: "right" }, { key: "gain", label: `Gained, ${unit}`, align: "right" }]}
         rows={s.awards.map((a) => ({ label: `${a.start ? dateLabel(a.start) : "?"} (${a.events})`, start: a.start_price ? money(a.start_price, s.currency, 2) : "–", avg: a.avg_price ? money(a.avg_price, s.currency, 2) : "–", growth: a.growth ? pct(a.growth, 0) : "–", gain: a.gain_usd ? money(cur === "chf" ? a.gain_chf ?? 0 : a.gain_usd, unit, 0) : "–" }))}
       />
-      {charts.vestedChart && (
+      {lots && charts.vestedChart && (
         <ChartCard
           title="Vested shares: awarded, vested, and what you have now"
           subtitle={`In ${s.currency}, by award, for the shares that have vested so far. The last bar is after the shares kept back for tax, and includes sales and what you still hold`}
@@ -268,10 +278,10 @@ export default function Rsu({ ccy }: { ccy: string }) {
                 {head("price", "Price", true)}
                 {head("start_price", "Price then", true)}
                 {head("growth", "Growth", true)}
-                {head("sold", "Sold", true)}
-                {head("left", "Left", true)}
-                {head("realised", "Realised", true)}
-                {head("unrealised", "Unrealised", true)}
+                {lots && head("sold", "Sold", true)}
+                {lots && head("left", "Left", true)}
+                {lots && head("realised", "Realised", true)}
+                {lots && head("unrealised", "Unrealised", true)}
               </tr>
             </thead>
             <tbody>
@@ -282,14 +292,14 @@ export default function Rsu({ ccy }: { ccy: string }) {
                   <tr key={e.ref} className="border-b border-hairline last:border-0">
                     <td className="tnum whitespace-nowrap px-2 py-2 text-ink">{dateLabel(e.day)}</td>
                     <td className="tnum whitespace-nowrap px-2 py-2 text-ink-2">{e.start ? dateLabel(e.start) : "–"}</td>
-                    <td className="tnum px-2 py-2 text-right text-ink">{n(e.net).toLocaleString("de-CH", { maximumFractionDigits: 0 })}</td>
+                    <td className="tnum px-2 py-2 text-right text-ink" title={e.estimate ? "booked from a statement alone: shares grossed up by the usual share kept back" : undefined}>{e.estimate ? "≈ " : ""}{n(e.net).toLocaleString("de-CH", { maximumFractionDigits: 0 })}</td>
                     <td className="tnum px-2 py-2 text-right text-ink">{money(e.price, s.currency, 2)}</td>
                     <td className="tnum px-2 py-2 text-right text-ink-2">{e.start_price ? money(e.start_price, s.currency, 2) : "–"}</td>
                     <td className={`tnum px-2 py-2 text-right ${e.growth ? sign(n(e.growth)) : "text-muted"}`}>{e.growth ? pct(e.growth, 0) : "–"}</td>
-                    <td className="tnum px-2 py-2 text-right text-ink-2">{n(e.sold).toLocaleString("de-CH", { maximumFractionDigits: 0 })}</td>
-                    <td className="tnum px-2 py-2 text-right text-ink-2">{n(e.left).toLocaleString("de-CH", { maximumFractionDigits: 0 })}</td>
-                    <td className={`tnum whitespace-nowrap px-2 py-2 text-right ${sign(r)}`}>{n(e.sold) > 0 ? money(r, unit, 0) : "–"}</td>
-                    <td className={`tnum whitespace-nowrap px-2 py-2 text-right ${sign(u)}`}>{n(e.left) > 0 ? money(u, unit, 0) : "–"}</td>
+                    {lots && <td className="tnum px-2 py-2 text-right text-ink-2">{n(e.sold).toLocaleString("de-CH", { maximumFractionDigits: 0 })}</td>}
+                    {lots && <td className="tnum px-2 py-2 text-right text-ink-2">{n(e.left).toLocaleString("de-CH", { maximumFractionDigits: 0 })}</td>}
+                    {lots && <td className={`tnum whitespace-nowrap px-2 py-2 text-right ${sign(r)}`}>{n(e.sold) > 0 ? money(r, unit, 0) : "–"}</td>}
+                    {lots && <td className={`tnum whitespace-nowrap px-2 py-2 text-right ${sign(u)}`}>{n(e.left) > 0 ? money(u, unit, 0) : "–"}</td>}
                   </tr>
                 );
               })}
@@ -306,6 +316,7 @@ export default function Rsu({ ccy }: { ccy: string }) {
           <li>Unrealised results use the latest price, and the rate today against the rate at the vest.</li>
           <li>The price on an award date is a closing price near it, a stand-in for the grant value (set per stock in the data repo's rules/rsu.yaml: on the day, or the day before, which is how the vest prices of this plan are defined); it is left out when no price is near that date.</li>
           <li>Sales are matched to a vest by the shares' cost date and price, which survive a move between brokers; vests on one day at one price are treated alike.</li>
+          {!lots && <li>A broker whose statements give no cost lots (here, shares held at a plan broker) shows each vest as the statement or the plan's confirmation gave it. A share count marked ≈ was booked from a statement alone, grossed up by the share the confirmations show was kept for tax. Holding against selling counts a split since the vest.</li>}
         </ul>
       </Card>
     </div>

@@ -392,6 +392,10 @@ def read_confirmation(path: Path) -> dict | None:
             else gross - issued,  # sold to cover: the trade books it
             "price": _num(_first(rf"Market Value Per Share \${num}", text, "market value", path)),
             "sell_to_cover": cover,
+            "award": _first(r"Award Number (\S+)", text, "award number", path),
+            "award_date": _us_day(
+                _first(r"Award Date (\d\d-\d\d-\d{4})", text, "award date", path)
+            ),
             "path": path.name,
         }
     if "EMPLOYEE STOCK PLAN PURCHASE CONFIRMATION" in text:
@@ -692,6 +696,8 @@ def _receipt(st: Statement, e: dict, price: Callable, plan: Plan, nth) -> RawTxn
             legs.append(f"Income:Employer:Salary  {-pay} USD")
             legs.append(f"{income}  {-gain} USD")
         else:
+            meta["award"] = conf["award"]
+            meta["award_date"] = conf["award_date"].isoformat()
             legs.append(f"{income}  {-total} USD")
     return RawTxn(
         day, shares, qty, commodity(sym), "E*TRADE",

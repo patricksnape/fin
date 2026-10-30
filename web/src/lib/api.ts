@@ -178,6 +178,7 @@ export interface AccountLedger {
 export interface ShareEvent {
   ref: string; award: string; award_name: string | null; start: string | null; day: string; days_to_event: number | null;
   gross: string; withheld: string; net: string; price: string; paid: string; discount: string | null;
+  estimate: boolean;
   sold: string; left: string; cost_usd: string; cost_chf: string;
   realised_usd: string; realised_chf: string; realised_fx_chf: string;
   unrealised_usd: string; unrealised_chf: string; unrealised_fx_chf: string;
@@ -201,7 +202,8 @@ export interface ShareSummary {
   missing_start_price: number; missing_start_date: number;
 }
 export interface ShareSeries {
-  commodity: string; program: "rsu" | "espp"; currency: string; price_now: string | null; price_history: "history" | "ledger";
+  commodity: string; program: "rsu" | "espp"; currency: string; price_now: string | null; price_now_day: string | null; price_history: "history" | "ledger";
+  lots: boolean; estimates: number;
   events: ShareEvent[]; awards: ShareAward[]; summary: ShareSummary;
 }
 export type ShareAwards = { ready: false; reason: string } | { ready: true; as_of: string; base: string; series: ShareSeries[] };
